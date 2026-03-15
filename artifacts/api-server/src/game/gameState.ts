@@ -324,13 +324,13 @@ function applyCardAction(action: string, playerId: string, players: Player[], bo
     case 'go_to_go':
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 0, money: p.money + 2000 } : p);
       break;
-    case 'go_to_37':
-      if (player.position > 37) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 37 } : p);
+    case 'go_to_39':
+      if (player.position > 39) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
+      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 39 } : p);
       break;
-    case 'go_to_16':
-      if (player.position > 16) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 16 } : p);
+    case 'go_to_26':
+      if (player.position > 26) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
+      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 26 } : p);
       break;
     case 'go_to_jail':
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 10, inJail: true, jailTurns: 0 } : p);

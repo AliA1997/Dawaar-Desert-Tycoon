@@ -29,9 +29,12 @@ import Colors from '@/constants/colors';
 import { useGame, TOKENS } from '@/context/GameContext';
 import type { BoardProperty, Player } from '@/context/GameContext';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BOARD_SIZE = Math.min(SCREEN_WIDTH - 8, 380);
-const CELL_SIZE = BOARD_SIZE / 11;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// Fix: total board = 2*CORNER + 9*CS => CS = BOARD_SIZE/12, CORNER = 1.5*CS
+const BOARD_SIZE = Math.round(Math.min(SCREEN_WIDTH - 16, SCREEN_HEIGHT - 270, 408));
+const CS  = Math.round(BOARD_SIZE / 12);       // regular cell short side
+const CS2 = Math.round(CS * 1.5);             // corner / long side
+const BOARD_ACTUAL = CS * 9 + CS2 * 2;        // true pixel size of the board
 
 const GROUP_COLORS: Record<string, string> = {
   brown: '#8B4513',
@@ -73,61 +76,88 @@ const diceStyles = StyleSheet.create({
   face: { fontSize: 28, color: Colors.darkBg },
 });
 
+type CellOrientation = 'bottom' | 'top' | 'left' | 'right' | 'corner';
+
 function BoardCell({
   space,
   players,
-  size,
-  isCorner,
+  w,
+  h,
+  orientation = 'bottom',
 }: {
   space: BoardProperty;
   players: Player[];
-  size: number;
-  isCorner?: boolean;
+  w: number;
+  h: number;
+  orientation?: CellOrientation;
 }) {
   const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
-  const owner = space.ownerId;
   const groupColor = space.colorGroup ? GROUP_COLORS[space.colorGroup] : null;
 
-  const typeIcons: Record<string, string> = {
-    go: 'arrow-redo',
-    jail: 'cube',
-    free_parking: 'car',
-    go_to_jail: 'lock-closed',
-    chance: '❓',
-    community: '❤️',
-    tax: '💸',
-    railroad: '🚂',
-    utility: '⚡',
+  // First word of name (no country suffix)
+  const shortName = (space.type === 'property' || space.type === 'railroad' || space.type === 'utility')
+    ? space.name.split(',')[0]
+    : null;
+
+  // Color bar on the outer edge of the board
+  const barEdge: object = orientation === 'top'    ? { top: 0,    left: 0, right: 0,  height: 5 }
+    : orientation === 'right'  ? { right: 0,  top: 0, bottom: 0, width: 5  }
+    : orientation === 'left'   ? { left: 0,   top: 0, bottom: 0, width: 5  }
+    : /* bottom / corner */      { bottom: 0, left: 0, right: 0,  height: 5 };
+
+  // Text rotation so names read from outer edge inward
+  const rot = orientation === 'bottom' ? '-90deg'
+    : orientation === 'top'    ? '90deg'
+    : '0deg';
+
+  // Special icons for non-property spaces
+  const specialLabel: Record<string, string> = {
+    go: '▶GO', jail: '⛓', free_parking: 'P', go_to_jail: '🔒',
+    chance: '?', community: '♡', tax: '$', railroad: '🚂', utility: '⚡',
   };
 
+  const isPortrait = (orientation === 'bottom' || orientation === 'top');
+
   return (
-    <View
-      style={[
-        cellStyles.cell,
-        { width: size, height: size },
-        isCorner && { width: size * 1.4, height: size * 1.4 },
-      ]}
-    >
+    <View style={[cellStyles.cell, { width: w, height: h }]}>
+      {/* Color band on outer edge */}
       {groupColor && (
-        <View style={[cellStyles.colorBar, { backgroundColor: groupColor }]} />
+        <View style={[cellStyles.colorBar, barEdge, { backgroundColor: groupColor }]} />
       )}
-      {owner && !space.isMortgaged && (
-        <View style={[cellStyles.ownerDot, { backgroundColor: '#C0392B' }]} />
+
+      {/* City / space name label */}
+      {shortName ? (
+        <View style={[
+          cellStyles.labelWrap,
+          isPortrait
+            ? { width: h, height: w, transform: [{ rotate: rot }] }
+            : { width: w, height: h },
+        ]}>
+          <Text style={cellStyles.nameText} numberOfLines={1} adjustsFontSizeToFit>
+            {shortName}
+          </Text>
+        </View>
+      ) : (
+        <Text style={cellStyles.typeIcon}>
+          {specialLabel[space.type] ?? ''}
+        </Text>
       )}
+
+      {/* Buildings */}
       {space.hotel && <Text style={cellStyles.buildingText}>🏨</Text>}
       {!space.hotel && space.houses > 0 && (
         <Text style={cellStyles.buildingText}>{'🏠'.repeat(Math.min(space.houses, 2))}</Text>
       )}
-      {space.type !== 'property' && typeIcons[space.type] && (
-        <Text style={cellStyles.typeIcon}>
-          {typeof typeIcons[space.type] === 'string' && typeIcons[space.type].length <= 2
-            ? typeIcons[space.type]
-            : ''}
-        </Text>
+
+      {/* Owner dot */}
+      {space.ownerId && !space.isMortgaged && (
+        <View style={[cellStyles.ownerDot, { backgroundColor: players.find(p => p.id === space.ownerId)?.color ?? '#C0392B' }]} />
       )}
+
+      {/* Player tokens */}
       {playersHere.length > 0 && (
         <View style={cellStyles.playersRow}>
-          {playersHere.slice(0, 2).map(p => (
+          {playersHere.slice(0, 3).map(p => (
             <View key={p.id} style={[cellStyles.playerDot, { backgroundColor: p.color }]} />
           ))}
         </View>
@@ -139,18 +169,36 @@ function BoardCell({
 const cellStyles = StyleSheet.create({
   cell: {
     borderWidth: 0.5,
-    borderColor: 'rgba(201,168,76,0.2)',
+    borderColor: 'rgba(201,168,76,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(17,24,39,0.9)',
+    backgroundColor: 'rgba(11,18,30,0.97)',
     overflow: 'hidden',
   },
   colorBar: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 4,
+  },
+  labelWrap: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nameText: {
+    fontSize: 6,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.warmCream,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+  },
+  typeIcon: {
+    fontSize: 9,
+    color: Colors.warmCream,
+    opacity: 0.75,
+  },
+  buildingText: {
+    fontSize: 7,
+    position: 'absolute',
+    top: 6,
   },
   ownerDot: {
     position: 'absolute',
@@ -159,12 +207,6 @@ const cellStyles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-  },
-  buildingText: {
-    fontSize: 7,
-  },
-  typeIcon: {
-    fontSize: 10,
   },
   playersRow: {
     position: 'absolute',
@@ -183,64 +225,60 @@ const cellStyles = StyleSheet.create({
 });
 
 function GameBoard({ board, players }: { board: BoardProperty[]; players: Player[] }) {
-  const cs = CELL_SIZE;
-  const cornerSize = cs * 1.3;
-
-  // Board layout: bottom row (indices 0-10), right col (11-20), top row (21-30), left col (31-39)
-  const bottomRow = board.slice(0, 11); // 0-10
-  const rightCol = board.slice(11, 20); // 11-19 (bottom to top)
-  const topRow = board.slice(20, 31); // 20-30 (right to left)
-  const leftCol = board.slice(31, 40); // 31-39 (top to bottom)
+  // Correctly: CS = short side, CS2 = long side (corner / outer strip)
+  // Board total = CS2 + 9*CS + CS2 = BOARD_ACTUAL
+  const bottomRow = board.slice(0, 11);          // spaces 0-10, left→right
+  const rightCol  = [...board.slice(11, 20)].reverse(); // spaces 19→11, top→bottom
+  const topRow    = [...board.slice(20, 31)].reverse(); // spaces 30→20, left→right
+  const leftCol   = board.slice(31, 40);          // spaces 31-39, top→bottom
 
   return (
-    <View style={[boardStyles.board, { width: BOARD_SIZE, height: BOARD_SIZE }]}>
-      {/* Center */}
+    <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
+
+      {/* Center logo */}
       <View style={boardStyles.center}>
         <Text style={boardStyles.centerTitleAr}>دوّار</Text>
         <Text style={boardStyles.centerTitle}>DAWAAR</Text>
-        <LinearGradient
-          colors={[Colors.gold + '20', 'transparent']}
-          style={boardStyles.centerGlow}
-        />
+        <LinearGradient colors={[Colors.gold + '18', 'transparent']} style={boardStyles.centerGlow} />
       </View>
 
-      {/* Bottom row (0-10, left to right) */}
-      <View style={[boardStyles.bottomRow, { bottom: 0, left: 0, right: 0, height: cornerSize }]}>
-        {bottomRow.map((space, i) => (
-          <BoardCell
-            key={space.index}
-            space={space}
-            players={players}
-            size={i === 0 || i === 10 ? cornerSize : cs}
-            isCorner={i === 0 || i === 10}
-          />
-        ))}
+      {/* ── Bottom row: spaces 0-10 left→right, portrait cells (CS wide × CS2 tall) ── */}
+      <View style={[boardStyles.row, { bottom: 0, left: 0, height: CS2 }]}>
+        {bottomRow.map((space, i) => {
+          const isC = i === 0 || i === 10;
+          return (
+            <BoardCell key={space.index} space={space} players={players}
+              w={isC ? CS2 : CS} h={CS2}
+              orientation={isC ? 'corner' : 'bottom'} />
+          );
+        })}
       </View>
 
-      {/* Right column (11-19, bottom to top) */}
-      <View style={[boardStyles.rightCol, { right: 0, top: cornerSize, bottom: cornerSize, width: cornerSize }]}>
+      {/* ── Right column: spaces 19→11 top→bottom, landscape cells (CS2 wide × CS tall) ── */}
+      <View style={[boardStyles.col, { right: 0, top: CS2, width: CS2 }]}>
         {rightCol.map(space => (
-          <BoardCell key={space.index} space={space} players={players} size={cs} />
+          <BoardCell key={space.index} space={space} players={players}
+            w={CS2} h={CS} orientation="right" />
         ))}
       </View>
 
-      {/* Top row (20-30, right to left) */}
-      <View style={[boardStyles.topRow, { top: 0, left: 0, right: 0, height: cornerSize }]}>
-        {[...topRow].reverse().map((space, i) => (
-          <BoardCell
-            key={space.index}
-            space={space}
-            players={players}
-            size={i === 0 || i === 10 ? cornerSize : cs}
-            isCorner={i === 0 || i === 10}
-          />
-        ))}
+      {/* ── Top row: spaces 30→20 left→right, portrait cells (CS wide × CS2 tall) ── */}
+      <View style={[boardStyles.row, { top: 0, left: 0, height: CS2 }]}>
+        {topRow.map((space, i) => {
+          const isC = i === 0 || i === 10;
+          return (
+            <BoardCell key={space.index} space={space} players={players}
+              w={isC ? CS2 : CS} h={CS2}
+              orientation={isC ? 'corner' : 'top'} />
+          );
+        })}
       </View>
 
-      {/* Left column (31-39, top to bottom) */}
-      <View style={[boardStyles.leftCol, { left: 0, top: cornerSize, bottom: cornerSize, width: cornerSize }]}>
+      {/* ── Left column: spaces 31-39 top→bottom, landscape cells (CS2 wide × CS tall) ── */}
+      <View style={[boardStyles.col, { left: 0, top: CS2, width: CS2 }]}>
         {leftCol.map(space => (
-          <BoardCell key={space.index} space={space} players={players} size={cs} />
+          <BoardCell key={space.index} space={space} players={players}
+            w={CS2} h={CS} orientation="left" />
         ))}
       </View>
     </View>
@@ -250,52 +288,43 @@ function GameBoard({ board, players }: { board: BoardProperty[]; players: Player
 const boardStyles = StyleSheet.create({
   board: {
     position: 'relative',
-    backgroundColor: 'rgba(8,15,26,0.95)',
+    backgroundColor: '#07101D',
     borderWidth: 2,
-    borderColor: Colors.gold + '60',
-    borderRadius: 4,
+    borderColor: Colors.gold + '55',
+    borderRadius: 3,
+  },
+  row: {
+    position: 'absolute',
+    flexDirection: 'row',
+  },
+  col: {
+    position: 'absolute',
+    flexDirection: 'column',
   },
   center: {
     position: 'absolute',
-    top: CELL_SIZE * 1.3,
-    left: CELL_SIZE * 1.3,
-    right: CELL_SIZE * 1.3,
-    bottom: CELL_SIZE * 1.3,
+    top: CS2,
+    left: CS2,
+    right: CS2,
+    bottom: CS2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   centerTitleAr: {
-    fontSize: 28,
+    fontSize: Math.round(CS * 1.4),
     fontFamily: 'Inter_700Bold',
     color: Colors.gold,
   },
   centerTitle: {
-    fontSize: 11,
+    fontSize: Math.round(CS * 0.45),
     fontFamily: 'Inter_700Bold',
-    color: Colors.gold + '80',
-    letterSpacing: 5,
+    color: Colors.gold + '70',
+    letterSpacing: 4,
   },
   centerGlow: {
     position: 'absolute',
     inset: 0,
     borderRadius: 8,
-  },
-  bottomRow: {
-    position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  topRow: {
-    position: 'absolute',
-    flexDirection: 'row',
-  },
-  rightCol: {
-    position: 'absolute',
-    flexDirection: 'column',
-  },
-  leftCol: {
-    position: 'absolute',
-    flexDirection: 'column',
   },
 });
 
@@ -888,9 +917,11 @@ const gameStyles = StyleSheet.create({
     color: Colors.warmCream,
   },
   boardContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 4,
+    overflow: 'hidden',
   },
   myStatus: {
     flexDirection: 'row',
