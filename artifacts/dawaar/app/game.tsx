@@ -30,11 +30,11 @@ import { useGame, TOKENS } from '@/context/GameContext';
 import type { BoardProperty, Player } from '@/context/GameContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// Fix: total board = 2*CORNER + 9*CS => CS = BOARD_SIZE/12, CORNER = 1.5*CS
-const BOARD_SIZE = Math.round(Math.min(SCREEN_WIDTH - 16, SCREEN_HEIGHT - 270, 408));
+// Full-width board: fill the mobile screen horizontally, cap height so UI fits below
+const BOARD_SIZE = Math.round(Math.min(SCREEN_WIDTH, SCREEN_HEIGHT - 210));
 const CS  = Math.round(BOARD_SIZE / 12);       // regular cell short side
 const CS2 = Math.round(CS * 1.5);             // corner / long side
-const BOARD_ACTUAL = CS * 9 + CS2 * 2;        // true pixel size of the board
+const BOARD_ACTUAL = CS * 9 + CS2 * 2;        // true pixel size (accounts for rounding)
 
 const GROUP_COLORS: Record<string, string> = {
   brown: '#8B4513',
@@ -94,40 +94,45 @@ function BoardCell({
   isHighlighted?: boolean;
 }) {
   const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
+  const ownerPlayer = space.ownerId ? players.find(p => p.id === space.ownerId) : null;
   const groupColor = space.colorGroup ? GROUP_COLORS[space.colorGroup] : null;
 
-  // First word of name (no country suffix)
   const shortName = (space.type === 'property' || space.type === 'railroad' || space.type === 'utility')
     ? space.name.split(',')[0]
     : null;
 
-  // Color bar on the outer edge of the board
-  const barEdge: object = orientation === 'top'    ? { top: 0,    left: 0, right: 0,  height: 5 }
-    : orientation === 'right'  ? { right: 0,  top: 0, bottom: 0, width: 5  }
-    : orientation === 'left'   ? { left: 0,   top: 0, bottom: 0, width: 5  }
-    : /* bottom / corner */      { bottom: 0, left: 0, right: 0,  height: 5 };
+  // Color bar — outer edge of the board
+  const barEdge: object = orientation === 'top'
+    ? { top: 0,    left: 0, right: 0,  height: 6 }
+    : orientation === 'right'  ? { right: 0,  top: 0, bottom: 0, width: 6  }
+    : orientation === 'left'   ? { left: 0,   top: 0, bottom: 0, width: 6  }
+    : /* bottom / corner */      { bottom: 0, left: 0, right: 0,  height: 6 };
 
-  // Text rotation so names read from outer edge inward
+  // Text rotation so names read outward from board edge
   const rot = orientation === 'bottom' ? '-90deg'
-    : orientation === 'top'    ? '90deg'
+    : orientation === 'top' ? '90deg'
     : '0deg';
 
-  // Special icons for non-property spaces
   const specialLabel: Record<string, string> = {
     go: '▶GO', jail: '⛓', free_parking: 'P', go_to_jail: '🔒',
     chance: '?', community: '♡', tax: '$', railroad: '🚂', utility: '⚡',
   };
 
-  const isPortrait = (orientation === 'bottom' || orientation === 'top');
+  const isPortrait = orientation === 'bottom' || orientation === 'top';
+
+  // Ownership tint on cell background
+  const cellBg = ownerPlayer
+    ? ownerPlayer.color + '28'
+    : '#07101D';
 
   return (
-    <View style={[cellStyles.cell, { width: w, height: h }]}>
-      {/* Color band on outer edge */}
+    <View style={[cellStyles.cell, { width: w, height: h, backgroundColor: cellBg }]}>
+      {/* Property color band — outer edge */}
       {groupColor && (
         <View style={[cellStyles.colorBar, barEdge, { backgroundColor: groupColor }]} />
       )}
 
-      {/* City / space name label */}
+      {/* City / space name */}
       {shortName ? (
         <View style={[
           cellStyles.labelWrap,
@@ -135,25 +140,32 @@ function BoardCell({
             ? { width: h, height: w, transform: [{ rotate: rot }] }
             : { width: w, height: h },
         ]}>
-          <Text style={cellStyles.nameText} numberOfLines={1} adjustsFontSizeToFit>
+          <Text style={[cellStyles.nameText, ownerPlayer ? { color: ownerPlayer.color } : {}]}
+                numberOfLines={1} adjustsFontSizeToFit>
             {shortName}
           </Text>
         </View>
       ) : (
-        <Text style={cellStyles.typeIcon}>
-          {specialLabel[space.type] ?? ''}
-        </Text>
+        <Text style={cellStyles.typeIcon}>{specialLabel[space.type] ?? ''}</Text>
       )}
 
-      {/* Buildings */}
-      {space.hotel && <Text style={cellStyles.buildingText}>🏨</Text>}
-      {!space.hotel && space.houses > 0 && (
-        <Text style={cellStyles.buildingText}>{'🏠'.repeat(Math.min(space.houses, 2))}</Text>
+      {/* Houses (green blocks) / Hotel (red block) */}
+      {(space.houses > 0 || space.hotel) && (
+        <View style={cellStyles.buildingsRow}>
+          {space.hotel
+            ? <View style={cellStyles.hotelBlock} />
+            : Array.from({ length: space.houses }).map((_, i) => (
+                <View key={i} style={cellStyles.houseBlock} />
+              ))
+          }
+        </View>
       )}
 
-      {/* Owner dot */}
-      {space.ownerId && !space.isMortgaged && (
-        <View style={[cellStyles.ownerDot, { backgroundColor: players.find(p => p.id === space.ownerId)?.color ?? '#C0392B' }]} />
+      {/* Owner badge — small colored circle with player initial */}
+      {ownerPlayer && (
+        <View style={[cellStyles.ownerBadge, { backgroundColor: ownerPlayer.color }]}>
+          <Text style={cellStyles.ownerInitial}>{ownerPlayer.name[0]}</Text>
+        </View>
       )}
 
       {/* Player tokens */}
@@ -166,9 +178,7 @@ function BoardCell({
       )}
 
       {/* Movement highlight overlay */}
-      {isHighlighted && (
-        <View style={cellStyles.highlightOverlay} />
-      )}
+      {isHighlighted && <View style={cellStyles.highlightOverlay} />}
     </View>
   );
 }
@@ -179,7 +189,6 @@ const cellStyles = StyleSheet.create({
     borderColor: 'rgba(201,168,76,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(11,18,30,0.97)',
     overflow: 'hidden',
   },
   colorBar: {
@@ -202,18 +211,45 @@ const cellStyles = StyleSheet.create({
     color: Colors.warmCream,
     opacity: 0.75,
   },
-  buildingText: {
-    fontSize: 7,
+  buildingsRow: {
     position: 'absolute',
-    top: 6,
+    top: 7,
+    left: 1,
+    right: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  ownerDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 5,
+  houseBlock: {
+    width: 4,
     height: 5,
-    borderRadius: 3,
+    borderRadius: 1,
+    backgroundColor: '#22C55E',
+  },
+  hotelBlock: {
+    width: 8,
+    height: 5,
+    borderRadius: 1,
+    backgroundColor: '#EF4444',
+  },
+  ownerBadge: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  ownerInitial: {
+    fontSize: 5,
+    color: 'white',
+    fontFamily: 'Inter_700Bold',
   },
   playersRow: {
     position: 'absolute',
@@ -652,7 +688,7 @@ export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const {
     gameState, myPlayerId, myPlayer, isMyTurn,
-    rollDice, buyProperty, endTurn, leaveGame,
+    rollDice, buyProperty, buildHouse, endTurn, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
   } = useGame();
@@ -667,6 +703,9 @@ export default function GameScreen() {
   const [highlightPos, setHighlightPos] = useState<number | null>(null);
   const [landingCard, setLandingCard] = useState<BoardProperty | null>(null);
   const [landingPlayer, setLandingPlayer] = useState<Player | null>(null);
+  const [lastCardText, setLastCardText] = useState<string | null>(null);
+  const [lastCardType, setLastCardType] = useState<'chance' | 'community' | null>(null);
+  const [showBuild, setShowBuild] = useState(false);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const landingDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const landingCardY = useSharedValue(300);
@@ -679,6 +718,8 @@ export default function GameScreen() {
     setLandingCard(null);
     setLandingPlayer(null);
     setHighlightPos(null);
+    setLastCardText(null);
+    setLastCardType(null);
   }, []);
 
   const dismissLanding = useCallback(() => {
@@ -709,17 +750,30 @@ export default function GameScreen() {
         let step = 0;
         setHighlightPos((from + 1) % 40);
 
+        // Extract chance/community card text from log if drawn in the last 8 seconds
+        const now = Date.now();
+        const recentLogs = [...gameState.log].reverse().slice(0, 8);
+        const cardEntry = recentLogs.find(l => {
+          if (!l.message.startsWith('CHANCE:') && !l.message.startsWith('COMMUNITY CHEST:')) return false;
+          return now - new Date(l.timestamp).getTime() < 8000;
+        });
+        const extractedCardText = cardEntry
+          ? cardEntry.message.replace(/^(CHANCE|COMMUNITY CHEST): /, '')
+          : null;
+
         stepTimerRef.current = setInterval(() => {
           step++;
           setHighlightPos((from + step) % 40);
           if (step >= steps) {
             clearInterval(stepTimerRef.current!);
             stepTimerRef.current = null;
-            // Show landing card
+            // Show landing card (with optional card text)
             setLandingCard(gameState.board[to]);
             setLandingPlayer(player);
+            setLastCardText(extractedCardText);
+            setLastCardType(cardEntry?.message.startsWith('COMMUNITY CHEST:') ? 'community' : extractedCardText ? 'chance' : null);
             landingCardY.value = withSpring(0, { damping: 18, stiffness: 120 });
-            landingDismissRef.current = setTimeout(dismissLanding, 3500);
+            landingDismissRef.current = setTimeout(dismissLanding, 4000);
           }
         }, 130);
       }
@@ -756,6 +810,13 @@ export default function GameScreen() {
   const canBuyCurrentSpace = isMyTurn && gameState.hasRolled && mySpace &&
     (mySpace.type === 'property' || mySpace.type === 'railroad' || mySpace.type === 'utility') &&
     !mySpace.ownerId && mySpace.price && myPlayer && myPlayer.money >= mySpace.price;
+
+  // Properties the current player can build houses/hotels on (owns full color group)
+  const myBuildableProps = myPlayer ? gameState.board.filter(s => {
+    if (s.type !== 'property' || !s.colorGroup || s.ownerId !== myPlayer.id) return false;
+    if (s.hotel) return false;
+    return gameState.board.filter(b => b.colorGroup === s.colorGroup).every(b => b.ownerId === myPlayer.id);
+  }) : [];
 
   const handleRoll = async () => {
     if (!isMyTurn || gameState.hasRolled) return;
@@ -839,6 +900,15 @@ export default function GameScreen() {
                 <Text style={gameStyles.landingCtx}>
                   {getLandingContext(landingCard, landingPlayer, gameState.players)}
                 </Text>
+                {/* Chance / Community chest card text */}
+                {lastCardText && (
+                  <View style={gameStyles.cardTextBox}>
+                    <Text style={gameStyles.cardTextLabel}>
+                      {lastCardType === 'community' ? '♡ Community Chest' : '✦ Chance'}
+                    </Text>
+                    <Text style={gameStyles.cardTextBody}>{lastCardText}</Text>
+                  </View>
+                )}
               </View>
             </View>
             <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>
@@ -892,6 +962,14 @@ export default function GameScreen() {
                 </LinearGradient>
               </TouchableOpacity>
             )}
+            {isMyTurn && myBuildableProps.length > 0 && (
+              <TouchableOpacity style={gameStyles.buildBtn} onPress={() => setShowBuild(true)}>
+                <View style={gameStyles.buildBtnInner}>
+                  <Ionicons name="home" size={18} color="#22C55E" />
+                  <Text style={gameStyles.buildBtnText}>Build</Text>
+                </View>
+              </TouchableOpacity>
+            )}
             {gameState.hasRolled && (
               <TouchableOpacity style={gameStyles.endBtn} onPress={handleEndTurn}>
                 <View style={gameStyles.endBtnInner}>
@@ -941,6 +1019,64 @@ export default function GameScreen() {
             )}
           </TouchableOpacity>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Build Houses / Hotels Modal */}
+      <Modal visible={showBuild} transparent animationType="slide" onRequestClose={() => setShowBuild(false)}>
+        <View style={gameStyles.logModalOverlay}>
+          <View style={[gameStyles.logModal, { paddingBottom: botPad + 16 }]}>
+            <View style={gameStyles.logHeader}>
+              <Text style={gameStyles.logTitle}>Build on Properties</Text>
+              <TouchableOpacity onPress={() => setShowBuild(false)}>
+                <Ionicons name="close" size={22} color={Colors.warmCream} />
+              </TouchableOpacity>
+            </View>
+            {myBuildableProps.length === 0 ? (
+              <Text style={gameStyles.buildEmptyText}>
+                Own all properties in a color group to build houses.
+              </Text>
+            ) : (
+              <FlatList
+                data={myBuildableProps}
+                keyExtractor={item => String(item.index)}
+                renderItem={({ item }) => {
+                  const groupColor = item.colorGroup ? GROUP_COLORS[item.colorGroup] : '#888';
+                  const nextCost = item.houses < 4 ? (item.houseCost ?? 1000) : (item.hotelCost ?? 1000);
+                  const canAfford = (myPlayer?.money ?? 0) >= nextCost;
+                  const label = item.houses < 4 ? `House ${item.houses + 1}/4` : 'Hotel';
+                  return (
+                    <View style={gameStyles.buildRow}>
+                      <View style={[gameStyles.buildColorDot, { backgroundColor: groupColor }]} />
+                      <View style={gameStyles.buildInfo}>
+                        <Text style={gameStyles.buildPropName}>{item.name}</Text>
+                        <View style={gameStyles.buildPipRow}>
+                          {Array.from({ length: item.houses }).map((_, i) => (
+                            <View key={i} style={gameStyles.pipHouse} />
+                          ))}
+                          {item.hotel && <View style={gameStyles.pipHotel} />}
+                        </View>
+                        <Text style={[gameStyles.buildCostText, !canAfford && { color: '#EF4444' }]}>
+                          {label} — {nextCost.toLocaleString()} DHS
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[gameStyles.buildConfirmBtn, !canAfford && { opacity: 0.4 }]}
+                        disabled={!canAfford}
+                        onPress={async () => {
+                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          await buildHouse(item.index);
+                        }}
+                      >
+                        <Ionicons name="add-circle" size={28} color="#22C55E" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+                style={gameStyles.logList}
+              />
+            )}
+          </View>
+        </View>
       </Modal>
 
       {/* Game Log Modal */}
@@ -1081,11 +1217,8 @@ const gameStyles = StyleSheet.create({
     color: Colors.warmCream,
   },
   boardContainer: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
-    overflow: 'hidden',
   },
   myStatus: {
     flexDirection: 'row',
@@ -1454,5 +1587,104 @@ const gameStyles = StyleSheet.create({
     color: '#374151',
     textAlign: 'center',
     paddingBottom: 8,
+  },
+  cardTextBox: {
+    marginTop: 10,
+    backgroundColor: 'rgba(201,168,76,0.12)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.gold + '55',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  cardTextLabel: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.gold,
+    letterSpacing: 0.5,
+    marginBottom: 3,
+    opacity: 0.85,
+  },
+  cardTextBody: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.warmCream,
+    lineHeight: 19,
+  },
+  buildBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#22C55E55',
+    backgroundColor: '#22C55E12',
+    overflow: 'hidden',
+  },
+  buildBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  buildBtnText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#22C55E',
+  },
+  buildEmptyText: {
+    color: '#6B7280',
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 20,
+    paddingHorizontal: 16,
+  },
+  buildRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(201,168,76,0.12)',
+    gap: 10,
+  },
+  buildColorDot: {
+    width: 12,
+    height: 32,
+    borderRadius: 3,
+    flexShrink: 0,
+  },
+  buildInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  buildPropName: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.warmCream,
+  },
+  buildPipRow: {
+    flexDirection: 'row',
+    gap: 3,
+    alignItems: 'center',
+  },
+  pipHouse: {
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    backgroundColor: '#22C55E',
+  },
+  pipHotel: {
+    width: 14,
+    height: 8,
+    borderRadius: 2,
+    backgroundColor: '#EF4444',
+  },
+  buildCostText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.gold,
+  },
+  buildConfirmBtn: {
+    padding: 4,
   },
 });
