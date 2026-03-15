@@ -560,6 +560,7 @@ export default function GameScreen() {
     gameState, myPlayerId, myPlayer, isMyTurn,
     rollDice, buyProperty, endTurn, leaveGame,
     error, clearError, lastDiceRoll,
+    npcThinking, isSinglePlayer, npcPlayerIds,
   } = useGame();
 
   const [selectedProperty, setSelectedProperty] = useState<BoardProperty | null>(null);
@@ -709,9 +710,22 @@ export default function GameScreen() {
           </View>
         ) : (
           <View style={gameStyles.waitingPanel}>
-            <Text style={gameStyles.waitingText}>
-              {currentPlayer ? `Waiting for ${currentPlayer.name}...` : 'Waiting...'}
-            </Text>
+            {isSinglePlayer && npcThinking ? (
+              <View style={gameStyles.botThinkingRow}>
+                <View style={gameStyles.botDots}>
+                  <View style={gameStyles.botDot} />
+                  <View style={[gameStyles.botDot, gameStyles.botDotMid]} />
+                  <View style={gameStyles.botDot} />
+                </View>
+                <Text style={gameStyles.botThinkingText}>
+                  {currentPlayer?.name} is thinking...
+                </Text>
+              </View>
+            ) : (
+              <Text style={gameStyles.waitingText}>
+                {currentPlayer ? `Waiting for ${currentPlayer.name}...` : 'Waiting...'}
+              </Text>
+            )}
           </View>
         )}
       </View>
@@ -787,6 +801,9 @@ export default function GameScreen() {
                           <Text style={gameStyles.playerCardName}>{player.name}</Text>
                           {player.id === myPlayerId && (
                             <Text style={gameStyles.youBadge}>You</Text>
+                          )}
+                          {npcPlayerIds.includes(player.id) && (
+                            <Text style={gameStyles.botBadge}>Bot</Text>
                           )}
                           {player.id === gameState.currentPlayerId && (
                             <Text style={gameStyles.activeBadge}>Active</Text>
@@ -1002,6 +1019,34 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     color: '#6B7280',
   },
+  botThinkingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  botDots: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  botDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.gold,
+    opacity: 0.5,
+  },
+  botDotMid: {
+    opacity: 1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  botThinkingText: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.gold,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -1101,6 +1146,15 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#38BDF8',
     backgroundColor: 'rgba(56,189,248,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  botBadge: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#A78BFA',
+    backgroundColor: 'rgba(167,139,250,0.15)',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,

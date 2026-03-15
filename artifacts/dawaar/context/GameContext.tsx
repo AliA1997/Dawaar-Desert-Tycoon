@@ -71,6 +71,9 @@ export const TOKENS = [
   { id: 'lamp', label: 'Oil Lamp', icon: 'bulb' },
 ];
 
+export const NPC_NAMES = ['Khalid', 'Aisha', 'Omar', 'Noor', 'Zaid'];
+export const NPC_TOKENS = ['falcon', 'dhow', 'palm', 'crescent', 'lamp'];
+
 interface GameContextType {
   gameState: GameState | null;
   myPlayerId: string | null;
@@ -79,7 +82,11 @@ interface GameContextType {
   error: string | null;
   isMyTurn: boolean;
   myPlayer: Player | null;
+  isSinglePlayer: boolean;
+  npcPlayerIds: string[];
+  npcThinking: boolean;
   createGame: (name: string, token: string) => Promise<string | null>;
+  createSinglePlayerGame: (name: string, token: string, npcCount: number) => Promise<boolean>;
   joinGame: (gameId: string, name: string, token: string) => Promise<boolean>;
   startGame: () => Promise<void>;
   rollDice: () => Promise<{ dice: number[]; isDoubles: boolean } | null>;
@@ -96,6 +103,8 @@ interface GameContextType {
 
 const GameContext = createContext<GameContextType | null>(null);
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
@@ -103,8 +112,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastDiceRoll, setLastDiceRoll] = useState<number[] | null>(null);
+  const [isSinglePlayer, setIsSinglePlayer] = useState(false);
+  const [npcPlayerIds, setNpcPlayerIds] = useState<string[]>([]);
+  const [npcThinking, setNpcThinking] = useState(false);
+
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingActiveRef = useRef(false);
+  const npcBotRunningRef = useRef(false);
 
   // Load saved player data
   useEffect(() => {
@@ -174,6 +188,85 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     startPolling(state.gameId, state.version);
   }, [startPolling]);
 
+  // ─── NPC Bot Logic ───────────────────────────────────────────────────────────
+  // Runs whenever the current turn changes in a single-player game
+  useEffect(() => {
+    if (!isSinglePlayer || !gameState || gameState.status !== 'playing') return;
+
+    const currentId = gameState.currentPlayerId;
+    if (!currentId) return;
+
+    const isNpc = npcPlayerIds.includes(currentId);
+    if (!isNpc) return;
+
+    // Already running for this state — don't double-trigger
+    if (npcBotRunningRef.current) return;
+    if (gameState.hasRolled) return; // NPC already rolled; end-turn logic is handled separately
+
+    npcBotRunningRef.current = true;
+
+    const runNpcTurn = async () => {
+      try {
+        setNpcThinking(true);
+
+        // 1. Pause to simulate "thinking"
+        await delay(1200 + Math.random() * 800);
+
+        // 2. Roll dice
+        const rollData = await api(`/games/${gameState.gameId}/roll`, 'POST', { playerId: currentId });
+        const updatedState: GameState = rollData.gameState;
+        setGameState(updatedState);
+        setLastDiceRoll(rollData.dice);
+
+        await delay(1000);
+
+        // 3. Decide whether to buy the landed property
+        const npcPlayer = updatedState.players.find(p => p.id === currentId);
+        if (npcPlayer) {
+          const landedSpace = updatedState.board[npcPlayer.position];
+          const canBuy =
+            landedSpace &&
+            (landedSpace.type === 'property' || landedSpace.type === 'railroad' || landedSpace.type === 'utility') &&
+            !landedSpace.ownerId &&
+            landedSpace.price != null &&
+            npcPlayer.money >= landedSpace.price &&
+            npcPlayer.money - landedSpace.price > 2000; // keep a reserve
+
+          if (canBuy) {
+            await delay(700);
+            const boughtState = await api(`/games/${gameState.gameId}/buy`, 'POST', { playerId: currentId });
+            setGameState(boughtState);
+            await delay(600);
+          }
+        }
+
+        // 4. End turn
+        await delay(800);
+        const endState = await api(`/games/${gameState.gameId}/end-turn`, 'POST', { playerId: currentId });
+        setGameState(endState);
+      } catch {
+        // silently ignore bot errors
+      } finally {
+        setNpcThinking(false);
+        npcBotRunningRef.current = false;
+      }
+    };
+
+    runNpcTurn();
+  }, [
+    isSinglePlayer,
+    gameState?.currentPlayerId,
+    gameState?.hasRolled,
+    gameState?.status,
+  ]);
+
+  // Reset bot lock when turn changes
+  useEffect(() => {
+    npcBotRunningRef.current = false;
+  }, [gameState?.currentPlayerId]);
+
+  // ─── API Actions ─────────────────────────────────────────────────────────────
+
   const createGame = useCallback(async (name: string, token: string): Promise<string | null> => {
     setIsLoading(true);
     setError(null);
@@ -189,11 +282,67 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       const data = await api('/games', 'POST', { playerName: name, playerId, token });
       const fullState = await api(`/games/${data.gameId}`);
+      setIsSinglePlayer(false);
+      setNpcPlayerIds([]);
       attachToGame(fullState);
       return data.gameId;
     } catch (e: any) {
       setError(e.message);
       return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [myPlayerId, attachToGame]);
+
+  const createSinglePlayerGame = useCallback(async (
+    name: string,
+    token: string,
+    npcCount: number
+  ): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      let playerId = myPlayerId;
+      if (!playerId) {
+        playerId = generatePlayerId();
+        await AsyncStorage.setItem('dawaar_playerId', playerId);
+        setMyPlayerId(playerId);
+      }
+      await AsyncStorage.setItem('dawaar_playerName', name);
+      setMyPlayerName(name);
+
+      // 1. Create the game
+      const created = await api('/games', 'POST', { playerName: name, playerId, token });
+      const gameId: string = created.gameId;
+
+      // 2. Join NPCs
+      const npcIds: string[] = [];
+      const count = Math.min(Math.max(npcCount, 1), 4);
+      const usedTokens = new Set([token]);
+
+      for (let i = 0; i < count; i++) {
+        const npcId = `npc_${i}_${Date.now()}`;
+        const npcName = `${NPC_NAMES[i]} (Bot)`;
+        const npcToken = NPC_TOKENS.find(t => !usedTokens.has(t)) || NPC_TOKENS[i % NPC_TOKENS.length];
+        usedTokens.add(npcToken);
+        await api(`/games/${gameId}/join`, 'POST', { playerName: npcName, playerId: npcId, token: npcToken });
+        npcIds.push(npcId);
+      }
+
+      // 3. Start immediately
+      await api(`/games/${gameId}/start`, 'POST', { playerId });
+
+      // 4. Fetch the full started state
+      const fullState = await api(`/games/${gameId}`);
+
+      setIsSinglePlayer(true);
+      setNpcPlayerIds(npcIds);
+      npcBotRunningRef.current = false;
+      attachToGame(fullState);
+      return true;
+    } catch (e: any) {
+      setError(e.message);
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -213,6 +362,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setMyPlayerName(name);
 
       const state = await api(`/games/${gameId}/join`, 'POST', { playerName: name, playerId, token });
+      setIsSinglePlayer(false);
+      setNpcPlayerIds([]);
       attachToGame(state);
       return true;
     } catch (e: any) {
@@ -334,6 +485,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setGameState(null);
     setLastDiceRoll(null);
     setError(null);
+    setIsSinglePlayer(false);
+    setNpcPlayerIds([]);
+    npcBotRunningRef.current = false;
   }, [stopPolling]);
 
   const myPlayer = gameState?.players.find(p => p.id === myPlayerId) || null;
@@ -348,7 +502,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       error,
       isMyTurn,
       myPlayer,
+      isSinglePlayer,
+      npcPlayerIds,
+      npcThinking,
       createGame,
+      createSinglePlayerGame,
       joinGame,
       startGame,
       rollDice,
