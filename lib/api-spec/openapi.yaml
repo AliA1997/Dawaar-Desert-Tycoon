@@ -1,15 +1,18 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Dawaar - Middle East Monopoly API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: game
+    description: Game management
+  - name: player
+    description: Player operations
 paths:
   /healthz:
     get:
@@ -24,6 +27,343 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /games:
+    post:
+      operationId: createGame
+      tags: [game]
+      summary: Create a new game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGameRequest"
+      responses:
+        "201":
+          description: Game created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameRoom"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}:
+    get:
+      operationId: getGame
+      tags: [game]
+      summary: Get game state
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Game state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/join:
+    post:
+      operationId: joinGame
+      tags: [game]
+      summary: Join an existing game
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinGameRequest"
+      responses:
+        "200":
+          description: Joined successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/start:
+    post:
+      operationId: startGame
+      tags: [game]
+      summary: Start the game
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerActionRequest"
+      responses:
+        "200":
+          description: Game started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/roll:
+    post:
+      operationId: rollDice
+      tags: [game]
+      summary: Roll dice for current player
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerActionRequest"
+      responses:
+        "200":
+          description: Dice rolled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RollResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/buy:
+    post:
+      operationId: buyProperty
+      tags: [game]
+      summary: Buy the current property
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerActionRequest"
+      responses:
+        "200":
+          description: Property purchased
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/end-turn:
+    post:
+      operationId: endTurn
+      tags: [game]
+      summary: End current player's turn
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerActionRequest"
+      responses:
+        "200":
+          description: Turn ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/build:
+    post:
+      operationId: buildHouse
+      tags: [game]
+      summary: Build a house or hotel on a property
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuildRequest"
+      responses:
+        "200":
+          description: House built
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/mortgage:
+    post:
+      operationId: mortgageProperty
+      tags: [game]
+      summary: Mortgage or unmortgage a property
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MortgageRequest"
+      responses:
+        "200":
+          description: Mortgage updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/trade:
+    post:
+      operationId: proposeTrade
+      tags: [game]
+      summary: Propose a trade with another player
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeRequest"
+      responses:
+        "200":
+          description: Trade proposed or completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameId}/poll:
+    get:
+      operationId: pollGameState
+      tags: [game]
+      summary: Long-poll for game state updates
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated game state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "304":
+          description: No changes
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +374,278 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    CreateGameRequest:
+      type: object
+      properties:
+        playerName:
+          type: string
+        playerId:
+          type: string
+        token:
+          type: string
+          description: Color token for the player (camel, falcon, dhow, palm, crescent, lamp)
+      required:
+        - playerName
+        - playerId
+        - token
+
+    JoinGameRequest:
+      type: object
+      properties:
+        playerName:
+          type: string
+        playerId:
+          type: string
+        token:
+          type: string
+      required:
+        - playerName
+        - playerId
+        - token
+
+    PlayerActionRequest:
+      type: object
+      properties:
+        playerId:
+          type: string
+      required:
+        - playerId
+
+    BuildRequest:
+      type: object
+      properties:
+        playerId:
+          type: string
+        propertyIndex:
+          type: integer
+      required:
+        - playerId
+        - propertyIndex
+
+    MortgageRequest:
+      type: object
+      properties:
+        playerId:
+          type: string
+        propertyIndex:
+          type: integer
+        action:
+          type: string
+          enum: [mortgage, unmortgage]
+      required:
+        - playerId
+        - propertyIndex
+        - action
+
+    TradeRequest:
+      type: object
+      properties:
+        fromPlayerId:
+          type: string
+        toPlayerId:
+          type: string
+        offeredPropertyIndices:
+          type: array
+          items:
+            type: integer
+        requestedPropertyIndices:
+          type: array
+          items:
+            type: integer
+        offeredMoney:
+          type: integer
+        requestedMoney:
+          type: integer
+        accept:
+          type: boolean
+          description: If true, accept an existing trade offer
+      required:
+        - fromPlayerId
+        - toPlayerId
+        - offeredPropertyIndices
+        - requestedPropertyIndices
+        - offeredMoney
+        - requestedMoney
+
+    GameRoom:
+      type: object
+      properties:
+        gameId:
+          type: string
+        status:
+          type: string
+          enum: [waiting, playing, finished]
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/Player"
+      required:
+        - gameId
+        - status
+        - players
+
+    Player:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        token:
+          type: string
+        money:
+          type: integer
+        position:
+          type: integer
+        properties:
+          type: array
+          items:
+            type: integer
+        inJail:
+          type: boolean
+        jailTurns:
+          type: integer
+        isBankrupt:
+          type: boolean
+        color:
+          type: string
+      required:
+        - id
+        - name
+        - token
+        - money
+        - position
+        - properties
+        - inJail
+        - jailTurns
+        - isBankrupt
+        - color
+
+    BoardProperty:
+      type: object
+      properties:
+        index:
+          type: integer
+        name:
+          type: string
+        nameAr:
+          type: string
+        type:
+          type: string
+          enum: [property, railroad, utility, tax, chance, community, go, jail, free_parking, go_to_jail, corner]
+        price:
+          type: integer
+        rent:
+          type: array
+          items:
+            type: integer
+        houseCost:
+          type: integer
+        hotelCost:
+          type: integer
+        mortgageValue:
+          type: integer
+        colorGroup:
+          type: string
+        ownerId:
+          type: string
+          nullable: true
+        houses:
+          type: integer
+        hotel:
+          type: boolean
+        isMortgaged:
+          type: boolean
+      required:
+        - index
+        - name
+        - nameAr
+        - type
+        - houses
+        - hotel
+        - isMortgaged
+
+    GameLog:
+      type: object
+      properties:
+        message:
+          type: string
+        timestamp:
+          type: string
+        playerId:
+          type: string
+          nullable: true
+      required:
+        - message
+        - timestamp
+
+    GameState:
+      type: object
+      properties:
+        gameId:
+          type: string
+        status:
+          type: string
+          enum: [waiting, playing, finished]
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/Player"
+        board:
+          type: array
+          items:
+            $ref: "#/components/schemas/BoardProperty"
+        currentPlayerId:
+          type: string
+          nullable: true
+        diceRoll:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        hasRolled:
+          type: boolean
+        version:
+          type: integer
+        log:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameLog"
+        winnerId:
+          type: string
+          nullable: true
+        pendingTrade:
+          $ref: "#/components/schemas/TradeRequest"
+          nullable: true
+      required:
+        - gameId
+        - status
+        - players
+        - board
+        - hasRolled
+        - version
+        - log
+
+    RollResult:
+      type: object
+      properties:
+        dice:
+          type: array
+          items:
+            type: integer
+        isDoubles:
+          type: boolean
+        gameState:
+          $ref: "#/components/schemas/GameState"
+      required:
+        - dice
+        - isDoubles
+        - gameState

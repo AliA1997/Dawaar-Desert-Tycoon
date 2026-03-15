@@ -5,7 +5,10 @@
  * Dawaar - Middle East Monopoly API
  * OpenAPI spec version: 0.1.0
  */
+import type { GameState } from "./gameState";
 
-export interface HealthStatus {
-  status: string;
+export interface RollResult {
+  dice: number[];
+  isDoubles: boolean;
+  gameState: GameState;
 }
