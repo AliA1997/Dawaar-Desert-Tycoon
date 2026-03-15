@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -84,12 +84,14 @@ function BoardCell({
   w,
   h,
   orientation = 'bottom',
+  isHighlighted = false,
 }: {
   space: BoardProperty;
   players: Player[];
   w: number;
   h: number;
   orientation?: CellOrientation;
+  isHighlighted?: boolean;
 }) {
   const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
   const groupColor = space.colorGroup ? GROUP_COLORS[space.colorGroup] : null;
@@ -162,6 +164,11 @@ function BoardCell({
           ))}
         </View>
       )}
+
+      {/* Movement highlight overlay */}
+      {isHighlighted && (
+        <View style={cellStyles.highlightOverlay} />
+      )}
     </View>
   );
 }
@@ -222,9 +229,16 @@ const cellStyles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: Colors.warmCream,
   },
+  highlightOverlay: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(201,168,76,0.45)',
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+  },
 });
 
-function GameBoard({ board, players }: { board: BoardProperty[]; players: Player[] }) {
+function GameBoard({ board, players, highlightPos }: { board: BoardProperty[]; players: Player[]; highlightPos?: number | null }) {
   // Correctly: CS = short side, CS2 = long side (corner / outer strip)
   // Board total = CS2 + 9*CS + CS2 = BOARD_ACTUAL
   const bottomRow = board.slice(0, 11);          // spaces 0-10, left→right
@@ -249,7 +263,8 @@ function GameBoard({ board, players }: { board: BoardProperty[]; players: Player
           return (
             <BoardCell key={space.index} space={space} players={players}
               w={isC ? CS2 : CS} h={CS2}
-              orientation={isC ? 'corner' : 'bottom'} />
+              orientation={isC ? 'corner' : 'bottom'}
+              isHighlighted={highlightPos === space.index} />
           );
         })}
       </View>
@@ -258,7 +273,8 @@ function GameBoard({ board, players }: { board: BoardProperty[]; players: Player
       <View style={[boardStyles.col, { right: 0, top: CS2, width: CS2 }]}>
         {rightCol.map(space => (
           <BoardCell key={space.index} space={space} players={players}
-            w={CS2} h={CS} orientation="right" />
+            w={CS2} h={CS} orientation="right"
+            isHighlighted={highlightPos === space.index} />
         ))}
       </View>
 
@@ -269,7 +285,8 @@ function GameBoard({ board, players }: { board: BoardProperty[]; players: Player
           return (
             <BoardCell key={space.index} space={space} players={players}
               w={isC ? CS2 : CS} h={CS2}
-              orientation={isC ? 'corner' : 'top'} />
+              orientation={isC ? 'corner' : 'top'}
+              isHighlighted={highlightPos === space.index} />
           );
         })}
       </View>
@@ -278,7 +295,8 @@ function GameBoard({ board, players }: { board: BoardProperty[]; players: Player
       <View style={[boardStyles.col, { left: 0, top: CS2, width: CS2 }]}>
         {leftCol.map(space => (
           <BoardCell key={space.index} space={space} players={players}
-            w={CS2} h={CS} orientation="left" />
+            w={CS2} h={CS} orientation="left"
+            isHighlighted={highlightPos === space.index} />
         ))}
       </View>
     </View>
@@ -583,6 +601,53 @@ const propStyles = StyleSheet.create({
   },
 });
 
+// ─── Landing-card helpers ──────────────────────────────────────────────────────
+
+function getLandingEmoji(space: BoardProperty): string {
+  if (space.colorGroup) {
+    const m: Record<string, string> = {
+      brown: '🌿', lightblue: '🌊', pink: '🌸', orange: '🌅',
+      red: '🌹', yellow: '⭐', green: '💎', darkblue: '👑',
+    };
+    return m[space.colorGroup] ?? '🏙️';
+  }
+  const m: Record<string, string> = {
+    go: '▶️', jail: '⛓️', free_parking: '🅿️', go_to_jail: '🔒',
+    chance: '❓', community: '♡', tax: '💸', railroad: '🚂', utility: '⚡',
+  };
+  return m[space.type] ?? '🎲';
+}
+
+function getLandingContext(
+  space: BoardProperty,
+  movingPlayer: Player,
+  allPlayers: Player[],
+): string {
+  switch (space.type) {
+    case 'go':          return 'Collect 2,000 DHS!';
+    case 'jail':        return 'Just visiting…';
+    case 'free_parking':return 'Rest and relax!';
+    case 'go_to_jail':  return 'Go directly to jail!';
+    case 'chance':      return 'Draw a Chance card';
+    case 'community':   return 'Draw a Community Chest card';
+    case 'tax':         return `Pay ${space.taxAmount?.toLocaleString()} DHS`;
+    case 'property':
+    case 'railroad':
+    case 'utility': {
+      if (!space.ownerId) return `For sale: ${space.price?.toLocaleString()} DHS`;
+      if (space.ownerId === movingPlayer.id) return 'Your own property!';
+      const owner = allPlayers.find(p => p.id === space.ownerId);
+      if (space.isMortgaged) return `Mortgaged — no rent due`;
+      const rentIdx = space.hotel ? 5 : (space.houses ?? 0);
+      const rent = space.rent?.[rentIdx] ?? 0;
+      return `Owned by ${owner?.name ?? '?'} — Pay ${rent.toLocaleString()} DHS`;
+    }
+    default: return '';
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const {
@@ -596,6 +661,77 @@ export default function GameScreen() {
   const [showLog, setShowLog] = useState(false);
   const [showPlayers, setShowPlayers] = useState(false);
   const [diceAnimating, setDiceAnimating] = useState(false);
+
+  // Movement tracking
+  const prevPositionsRef = useRef<Record<string, number>>({});
+  const [highlightPos, setHighlightPos] = useState<number | null>(null);
+  const [landingCard, setLandingCard] = useState<BoardProperty | null>(null);
+  const [landingPlayer, setLandingPlayer] = useState<Player | null>(null);
+  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const landingDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const landingCardY = useSharedValue(300);
+
+  const landingCardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: landingCardY.value }],
+  }));
+
+  const clearLandingState = useCallback(() => {
+    setLandingCard(null);
+    setLandingPlayer(null);
+    setHighlightPos(null);
+  }, []);
+
+  const dismissLanding = useCallback(() => {
+    if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
+    landingCardY.value = withTiming(300, { duration: 220 }, (done) => {
+      if (done) runOnJS(clearLandingState)();
+    });
+  }, [clearLandingState]);
+
+  // Detect any player position change and animate
+  const posKey = gameState?.players.map(p => `${p.id}:${p.position}`).join(',') ?? '';
+  useEffect(() => {
+    if (!gameState) return;
+    gameState.players.forEach(player => {
+      if (player.isBankrupt) { prevPositionsRef.current[player.id] = player.position; return; }
+      const prev = prevPositionsRef.current[player.id];
+      if (prev === undefined) { prevPositionsRef.current[player.id] = player.position; return; }
+      if (prev !== player.position) {
+        const from = prev;
+        const to = player.position;
+        const steps = ((to - from + 40) % 40) || 1;
+        prevPositionsRef.current[player.id] = to;
+
+        // Clear prior animation
+        if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+        if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
+
+        let step = 0;
+        setHighlightPos((from + 1) % 40);
+
+        stepTimerRef.current = setInterval(() => {
+          step++;
+          setHighlightPos((from + step) % 40);
+          if (step >= steps) {
+            clearInterval(stepTimerRef.current!);
+            stepTimerRef.current = null;
+            // Show landing card
+            setLandingCard(gameState.board[to]);
+            setLandingPlayer(player);
+            landingCardY.value = withSpring(0, { damping: 18, stiffness: 120 });
+            landingDismissRef.current = setTimeout(dismissLanding, 3500);
+          }
+        }, 130);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posKey]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
+  }, []);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
@@ -679,8 +815,36 @@ export default function GameScreen() {
 
       {/* Board */}
       <View style={gameStyles.boardContainer}>
-        <GameBoard board={gameState.board} players={gameState.players} />
+        <GameBoard board={gameState.board} players={gameState.players} highlightPos={highlightPos} />
       </View>
+
+      {/* ── Landing card ── slides up over the status bar when a piece lands ── */}
+      {landingCard && landingPlayer && (
+        <Animated.View style={[gameStyles.landingWrap, landingCardStyle]} pointerEvents="box-none">
+          <TouchableOpacity onPress={dismissLanding} activeOpacity={0.92} style={[
+            gameStyles.landingCard,
+            landingCard.colorGroup ? { borderColor: GROUP_COLORS[landingCard.colorGroup] + 'AA' } : {},
+          ]}>
+            {/* Color stripe */}
+            {landingCard.colorGroup && (
+              <View style={[gameStyles.landingStripe, { backgroundColor: GROUP_COLORS[landingCard.colorGroup] }]} />
+            )}
+            <View style={gameStyles.landingBody}>
+              <Text style={gameStyles.landingEmoji}>{getLandingEmoji(landingCard)}</Text>
+              <View style={gameStyles.landingTexts}>
+                <Text style={[gameStyles.landingWho, { color: landingPlayer.color }]}>
+                  {landingPlayer.id === myPlayerId ? 'You landed on' : `${landingPlayer.name} landed on`}
+                </Text>
+                <Text style={gameStyles.landingName}>{landingCard.name}</Text>
+                <Text style={gameStyles.landingCtx}>
+                  {getLandingContext(landingCard, landingPlayer, gameState.players)}
+                </Text>
+              </View>
+            </View>
+            <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
       {/* My status */}
       {myPlayer && (
@@ -1227,5 +1391,68 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: '#6B7280',
     alignSelf: 'center',
+  },
+
+  // Landing card
+  landingWrap: {
+    position: 'absolute',
+    bottom: 160,
+    left: 12,
+    right: 12,
+    zIndex: 200,
+  },
+  landingCard: {
+    backgroundColor: '#0D1826',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: Colors.gold + '55',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  landingStripe: {
+    height: 5,
+    width: '100%',
+  },
+  landingBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+    gap: 14,
+  },
+  landingEmoji: {
+    fontSize: 32,
+  },
+  landingTexts: {
+    flex: 1,
+    gap: 2,
+  },
+  landingWho: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    opacity: 0.85,
+  },
+  landingName: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+  },
+  landingCtx: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.gold,
+    marginTop: 2,
+  },
+  landingDismissTip: {
+    fontSize: 10,
+    fontFamily: 'Inter_400Regular',
+    color: '#374151',
+    textAlign: 'center',
+    paddingBottom: 8,
   },
 });
