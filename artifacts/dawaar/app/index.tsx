@@ -193,7 +193,7 @@ export default function HomeScreen() {
                     <View key={i} style={[styles.npcChip, { backgroundColor: Colors.players[i + 1] + '22', borderColor: Colors.players[i + 1] + '44' }]}>
                       <Ionicons name="hardware-chip" size={12} color={Colors.players[i + 1]} />
                       <Text style={[styles.npcChipText, { color: Colors.players[i + 1] }]}>
-                        {['Khalid', 'Aisha', 'Omar', 'Noor'][i]}
+                        {['Khalid', 'Tariq', 'Omar', 'Layla'][i]}
                       </Text>
                     </View>
                   ))}

@@ -71,7 +71,7 @@ export const TOKENS = [
   { id: 'lamp', label: 'Oil Lamp', icon: 'bulb' },
 ];
 
-export const NPC_NAMES = ['Khalid', 'Aisha', 'Omar', 'Noor', 'Zaid'];
+export const NPC_NAMES = ['Khalid', 'Tariq', 'Omar', 'Layla', 'Zaid'];
 export const NPC_TOKENS = ['falcon', 'dhow', 'palm', 'crescent', 'lamp'];
 
 interface GameContextType {
