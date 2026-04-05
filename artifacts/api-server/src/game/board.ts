@@ -79,27 +79,119 @@ export const COLOR_GROUPS: Record<string, { color: string; dark: string }> = {
 };
 
 export const CHANCE_CARDS = [
-  { text: 'Advance to GO! Collect 2000 DHS',               action: 'go_to_go' },
-  { text: 'Advance to Dubai — the city of gold!',          action: 'go_to_39' },
-  { text: 'Advance to Riyadh',                             action: 'go_to_26' },
-  { text: 'Go to Jail! Do not pass GO!',                   action: 'go_to_jail' },
-  { text: 'Bank pays you dividend of 500 DHS',             action: 'collect_500' },
-  { text: 'Pay school fees of 1500 DHS',                   action: 'pay_1500' },
-  { text: 'Advance to nearest Railroad',                   action: 'nearest_railroad' },
-  { text: 'Take a walk in the souk. Move back 3 spaces',   action: 'back_3' },
-  { text: 'Your oil investments paid off! Collect 1500 DHS', action: 'collect_1500' },
-  { text: 'Grand hotel opening! Collect 1000 from each player', action: 'collect_1000_each' },
+  {
+    text: 'Your camel caravan arrives at the oasis ahead of schedule. Advance to GO — collect 2,000 DHS.',
+    action: 'go_to_go',
+  },
+  {
+    text: 'A royal summons arrives sealed in gold wax — the Sheikh of Dubai requests your immediate presence. Advance to Dubai, collect 2,000 DHS if you pass GO.',
+    action: 'go_to_39',
+  },
+  {
+    text: 'The Riyadh Investment Forum has reserved the front row for you. Advance to Riyadh — collect 2,000 DHS if you pass GO along the way.',
+    action: 'go_to_26',
+  },
+  {
+    text: 'Counterfeit dirhams were discovered in your luggage at the border checkpoint. Go directly to Jail — do not pass GO, do not collect 2,000 DHS.',
+    action: 'go_to_jail',
+  },
+  {
+    text: 'Your Saudi Aramco shares deliver a bumper quarterly dividend. The bank credits your account with 500 DHS.',
+    action: 'collect_500',
+  },
+  {
+    text: 'Annual tuition fees for your children at the American University of Dubai are now due. Pay 1,500 DHS.',
+    action: 'pay_1500',
+  },
+  {
+    text: 'A camel is far too slow — board the Haramain High-Speed Railway instead! Advance to the nearest station on the board.',
+    action: 'nearest_railroad',
+  },
+  {
+    text: 'You wander deep into the old souk, drawn in by the scent of saffron and freshly ground coffee. You lose your way among the spice merchants. Move back 3 spaces.',
+    action: 'back_3',
+  },
+  {
+    text: 'Your offshore drilling platform strikes a vast new reservoir beneath the Arabian Gulf. The bank pays you 1,500 DHS in royalties.',
+    action: 'collect_1500',
+  },
+  {
+    text: 'You host a lavish Eid al-Adha majlis at your villa — every player arrives bearing generous gifts. Collect 1,000 DHS from each of them.',
+    action: 'collect_1000_each',
+  },
+  {
+    text: 'Hajj season fills every room in your Mecca guesthouse to capacity for the full month. Collect 2,000 DHS in accommodation revenue.',
+    action: 'collect_2000',
+  },
+  {
+    text: 'Your sports car was caught doing 180 km/h on Sheikh Zayed Road. Pay a fine of 500 DHS to the traffic authority.',
+    action: 'pay_500',
+  },
+  {
+    text: 'You win the Abu Dhabi Grand Prix VIP hospitality lottery — pit lane access, gala dinner, and a cash prize! Collect 2,500 DHS.',
+    action: 'collect_2500',
+  },
+  {
+    text: 'Your falcon was impounded at the airport — it was travelling without the correct CITES transit permits. Pay a penalty of 1,000 DHS to secure its release.',
+    action: 'pay_1000',
+  },
 ];
 
 export const COMMUNITY_CARDS = [
-  { text: 'Advance to GO! Collect 2000 DHS',               action: 'go_to_go' },
-  { text: 'Ramadan Kareem! Collect 2000 DHS',              action: 'collect_2000' },
-  { text: 'Medical expenses. Pay 1000 DHS',                action: 'pay_1000' },
-  { text: 'Tax refund! Collect 200 DHS',                   action: 'collect_200' },
-  { text: 'Eid Mubarak! Collect 1000 from each player',    action: 'collect_1000_each' },
-  { text: 'Go to Jail! Do not pass GO!',                   action: 'go_to_jail' },
-  { text: 'Your business flourishes! Collect 2500 DHS',    action: 'collect_2500' },
-  { text: 'Pay water and electricity bill: 1500 DHS',      action: 'pay_1500' },
-  { text: 'Inherit from wealthy uncle: 2000 DHS',          action: 'collect_2000' },
-  { text: 'Pay hospital fees: 500 DHS',                    action: 'pay_500' },
+  {
+    text: 'Your trading caravan completes the great circuit and passes the starting point of the route. Advance to GO — collect 2,000 DHS.',
+    action: 'go_to_go',
+  },
+  {
+    text: 'Ramadan Kareem! The bank distributes a special 2,000 DHS bonus to all traders in celebration of the holy month.',
+    action: 'collect_2000',
+  },
+  {
+    text: 'A family medical emergency sends your relative to a private hospital in Abu Dhabi. Pay the bill of 1,000 DHS.',
+    action: 'pay_1000',
+  },
+  {
+    text: 'The tax authority has processed your overpayment claim and approves a refund. Collect 200 DHS.',
+    action: 'collect_200',
+  },
+  {
+    text: 'Eid Mubarak! You celebrate with all traders on the board — collect 1,000 DHS in Eidiyah from each player.',
+    action: 'collect_1000_each',
+  },
+  {
+    text: 'An anonymous tip-off reaches the authorities regarding your business dealings. You are escorted to jail immediately. Go to Jail — do not pass GO.',
+    action: 'go_to_jail',
+  },
+  {
+    text: 'Your import-export company lands a landmark contract with the Abu Dhabi government. Your accountant wires you 2,500 DHS in advance payment.',
+    action: 'collect_2500',
+  },
+  {
+    text: 'DEWA issues a combined water and electricity bill for your sprawling Dubai villa. Pay 1,500 DHS.',
+    action: 'pay_1500',
+  },
+  {
+    text: 'A wealthy great-uncle passes away and bequeaths you his entire pearl-diving fortune accumulated over forty years. Inherit 2,000 DHS.',
+    action: 'collect_2000',
+  },
+  {
+    text: 'Emergency surgery at a private clinic in Riyadh was unavoidable. Pay the hospital fees of 500 DHS.',
+    action: 'pay_500',
+  },
+  {
+    text: 'Your souk stall has its best quarter ever — premium saffron and oud perfume sell out in days. Collect 1,500 DHS in trading profits.',
+    action: 'collect_1500',
+  },
+  {
+    text: 'The municipality levies annual property taxes on your desert estate outside Riyadh. Pay 1,000 DHS.',
+    action: 'pay_1000',
+  },
+  {
+    text: 'The regional tourism board awards you a prize for promoting Emirati cultural heritage to international visitors. Collect 500 DHS.',
+    action: 'collect_500',
+  },
+  {
+    text: 'New metro lines are announced through your rental districts — property values surge overnight. Collect 2,000 DHS in rising rental income.',
+    action: 'collect_2000',
+  },
 ];

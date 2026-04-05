@@ -10,6 +10,7 @@ import {
   mortgageProperty,
   proposeTrade,
   acceptTrade,
+  claimAdReward,
 } from '../game/gameState.js';
 import { getGame, setGame, generateGameId } from '../game/gameStore.js';
 
@@ -117,6 +118,18 @@ router.post('/:gameId/mortgage', (req, res) => {
   const { playerId, propertyIndex, action } = req.body;
   if (!playerId || propertyIndex === undefined || !action) return res.status(400).json({ error: 'playerId, propertyIndex, and action are required' });
   const { state: newState, error } = mortgageProperty(state, playerId, propertyIndex, action);
+  if (error) return res.status(400).json({ error });
+  setGame(req.params.gameId, newState);
+  res.json(newState);
+});
+
+// POST /api/games/:gameId/reward — claim ad-watch reward (1,500 DHS)
+router.post('/:gameId/reward', (req, res) => {
+  const state = getGame(req.params.gameId);
+  if (!state) return res.status(404).json({ error: 'Game not found' });
+  const { playerId } = req.body;
+  if (!playerId) return res.status(400).json({ error: 'playerId is required' });
+  const { state: newState, error } = claimAdReward(state, playerId);
   if (error) return res.status(400).json({ error });
   setGame(req.params.gameId, newState);
   res.json(newState);

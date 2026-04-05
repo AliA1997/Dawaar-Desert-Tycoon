@@ -100,6 +100,7 @@ interface GameContextType {
   mortgageProperty: (propertyIndex: number, action: 'mortgage' | 'unmortgage') => Promise<void>;
   proposeTrade: (toPlayerId: string, offeredProps: number[], requestedProps: number[], offeredMoney: number, requestedMoney: number) => Promise<void>;
   acceptTrade: () => Promise<void>;
+  claimAdReward: () => Promise<void>;
   clearError: () => void;
   lastDiceRoll: number[] | null;
   leaveGame: () => void;
@@ -484,6 +485,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [gameState, myPlayerId]);
 
+  const claimAdReward = useCallback(async () => {
+    if (!gameState || !myPlayerId) return;
+    setError(null);
+    try {
+      const state = await api(`/games/${gameState.gameId}/reward`, 'POST', { playerId: myPlayerId });
+      setGameState(state);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [gameState, myPlayerId]);
+
   const leaveGame = useCallback(() => {
     stopPolling();
     setGameState(null);
@@ -520,6 +532,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       mortgageProperty,
       proposeTrade,
       acceptTrade,
+      claimAdReward,
       clearError: () => setError(null),
       lastDiceRoll,
       leaveGame,

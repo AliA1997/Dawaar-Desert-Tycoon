@@ -692,6 +692,7 @@ export default function GameScreen() {
     rollDice, buyProperty, buildHouse, endTurn, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
+    claimAdReward,
   } = useGame();
 
   const [selectedProperty, setSelectedProperty] = useState<BoardProperty | null>(null);
@@ -707,6 +708,11 @@ export default function GameScreen() {
   const [lastCardText, setLastCardText] = useState<string | null>(null);
   const [lastCardType, setLastCardType] = useState<'chance' | 'community' | null>(null);
   const [showBuild, setShowBuild] = useState(false);
+  const [showAdModal, setShowAdModal] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(5);
+  const [adWatched, setAdWatched] = useState(false);
+  const [adClaiming, setAdClaiming] = useState(false);
+  const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const landingDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const landingCardY = useSharedValue(300);
@@ -722,6 +728,30 @@ export default function GameScreen() {
     setLastCardText(null);
     setLastCardType(null);
   }, []);
+
+  const openAdModal = useCallback(() => {
+    setAdCountdown(5);
+    setShowAdModal(true);
+    if (adTimerRef.current) clearInterval(adTimerRef.current);
+    adTimerRef.current = setInterval(() => {
+      setAdCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(adTimerRef.current!);
+          adTimerRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const handleClaimAdReward = useCallback(async () => {
+    setAdClaiming(true);
+    await claimAdReward();
+    setAdClaiming(false);
+    setAdWatched(true);
+    setShowAdModal(false);
+  }, [claimAdReward]);
 
   const dismissLanding = useCallback(() => {
     if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
@@ -978,6 +1008,12 @@ export default function GameScreen() {
                 </View>
               </TouchableOpacity>
             )}
+            {!adWatched && (
+              <TouchableOpacity style={gameStyles.adWatchBtn} onPress={openAdModal}>
+                <Ionicons name="play-circle" size={15} color={Colors.gold} />
+                <Text style={gameStyles.adWatchBtnText}>+1,500 DHS</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={gameStyles.waitingPanel}>
@@ -1172,6 +1208,70 @@ export default function GameScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ─── Rewarded Video Modal ─────────────────────────────────────────── */}
+      <Modal visible={showAdModal} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={gameStyles.adOverlay}>
+          <View style={gameStyles.adCard}>
+            {/* Header */}
+            <View style={gameStyles.adHeader}>
+              <View style={gameStyles.adSponsorBadge}>
+                <Text style={gameStyles.adSponsorText}>SPONSORED</Text>
+              </View>
+              {adCountdown > 0 && (
+                <View style={gameStyles.adCountdownBadge}>
+                  <Text style={gameStyles.adCountdownText}>{adCountdown}s</Text>
+                </View>
+              )}
+            </View>
+
+            {adCountdown > 0 ? (
+              /* ── Video playing state ── */
+              <>
+                <View style={gameStyles.adVideoFrame}>
+                  <View style={gameStyles.adVideoPlaceholder}>
+                    <Ionicons name="videocam" size={38} color="rgba(255,255,255,0.3)" />
+                    <Text style={gameStyles.adVideoLabel}>Video Ad Playing</Text>
+                    <View style={gameStyles.adProgressBar}>
+                      <View style={[gameStyles.adProgressFill, { width: `${((5 - adCountdown) / 5) * 100}%` }]} />
+                    </View>
+                  </View>
+                </View>
+                <Text style={gameStyles.adWaitText}>Watch to earn 1,500 DHS</Text>
+              </>
+            ) : (
+              /* ── Reward ready state ── */
+              <>
+                <View style={gameStyles.adRewardReady}>
+                  <Ionicons name="checkmark-circle" size={56} color="#22C55E" />
+                  <Text style={gameStyles.adRewardTitle}>Reward Earned!</Text>
+                  <Text style={gameStyles.adRewardAmt}>+1,500 DHS</Text>
+                  <Text style={gameStyles.adRewardSub}>Added to your balance</Text>
+                </View>
+                <TouchableOpacity
+                  style={[gameStyles.adClaimBtn, adClaiming && { opacity: 0.6 }]}
+                  onPress={handleClaimAdReward}
+                  disabled={adClaiming}
+                >
+                  <LinearGradient colors={[Colors.gold, '#A07830']} style={gameStyles.adClaimGrad}>
+                    <Text style={gameStyles.adClaimText}>{adClaiming ? 'Claiming…' : 'Claim 1,500 DHS'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Banner Ad Placeholder ────────────────────────────────────────── */}
+      {/* TODO: Replace with real AdMob BannerAd from react-native-google-mobile-ads */}
+      {adWatched && (
+        <View style={[gameStyles.bannerAd, { marginBottom: insets.bottom }]}>
+          <Text style={gameStyles.bannerAdText}>🌟 Dawaar — Discover the Arab World</Text>
+          <Text style={gameStyles.bannerAdSub}>AD</Text>
+        </View>
+      )}
+
     </View>
   );
 }
@@ -1696,5 +1796,174 @@ const gameStyles = StyleSheet.create({
   },
   buildConfirmBtn: {
     padding: 4,
+  },
+
+  /* ── Watch-Ad button (inline in action strip) ── */
+  adWatchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.gold + '44',
+    backgroundColor: Colors.gold + '10',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  adWatchBtnText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.gold,
+  },
+
+  /* ── Rewarded video modal ── */
+  adOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  adCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#0E1A2E',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.25)',
+    overflow: 'hidden',
+    paddingBottom: 20,
+  },
+  adHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  adSponsorBadge: {
+    backgroundColor: 'rgba(201,168,76,0.18)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  adSponsorText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+    letterSpacing: 1,
+  },
+  adCountdownBadge: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  adCountdownText: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+  },
+  adVideoFrame: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+    height: 180,
+    backgroundColor: '#111C30',
+  },
+  adVideoPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  adVideoLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.4)',
+  },
+  adProgressBar: {
+    width: '70%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  adProgressFill: {
+    height: 4,
+    backgroundColor: Colors.gold,
+    borderRadius: 2,
+  },
+  adWaitText: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    marginTop: 14,
+  },
+  adRewardReady: {
+    alignItems: 'center',
+    padding: 24,
+    gap: 6,
+  },
+  adRewardTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+    marginTop: 4,
+  },
+  adRewardAmt: {
+    fontSize: 32,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+  },
+  adRewardSub: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  adClaimBtn: {
+    marginHorizontal: 16,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  adClaimGrad: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adClaimText: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.darkBg,
+  },
+
+  /* ── Banner Ad placeholder ── */
+  bannerAd: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+    backgroundColor: '#0D1621',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(201,168,76,0.15)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  bannerAdText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.45)',
+  },
+  bannerAdSub: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: 'rgba(255,255,255,0.25)',
+    letterSpacing: 1,
   },
 });
