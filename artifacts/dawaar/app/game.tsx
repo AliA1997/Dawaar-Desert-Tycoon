@@ -12,6 +12,7 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +30,10 @@ import Animated, {
 import Colors from '@/constants/colors';
 import { useGame, TOKENS, getTokenImage } from '@/context/GameContext';
 import type { BoardProperty, Player } from '@/context/GameContext';
+import { useSubscription } from '@/hooks/useSubscription';
+import SubscribeModal from '@/components/SubscribeModal';
+
+const DICE_GIF = require('../assets/dice.gif');
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // Full-width board: fill the mobile screen horizontally, cap height so UI fits below
@@ -712,8 +717,19 @@ export default function GameScreen() {
   const [adCountdown, setAdCountdown] = useState(5);
   const [adWatched, setAdWatched] = useState(false);
   const [adClaiming, setAdClaiming] = useState(false);
+  const [showInterstitial, setShowInterstitial] = useState(false);
+  const [showSubscribe, setShowSubscribe] = useState(false);
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Subscription
+  const { isSubscribed } = useSubscription();
+
+  // Interstitial turn tracking — fires at cumulative turns [4, 9, 16, 20, 25, 32…] (+4, +5, +7 cycling)
+  const INTERSTITIAL_GAPS = [4, 5, 7];
+  const turnCountRef = useRef(0);
+  const interstitialGapIdxRef = useRef(0);
+  const nextInterstitialRef = useRef(INTERSTITIAL_GAPS[0]);
   const landingDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const landingCardY = useSharedValue(300);
 
@@ -860,6 +876,14 @@ export default function GameScreen() {
   const handleEndTurn = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await endTurn();
+    if (!isSubscribed) {
+      turnCountRef.current += 1;
+      if (turnCountRef.current >= nextInterstitialRef.current) {
+        setShowInterstitial(true);
+        interstitialGapIdxRef.current = (interstitialGapIdxRef.current + 1) % INTERSTITIAL_GAPS.length;
+        nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current];
+      }
+    }
   };
 
   const handleBuy = async () => {
@@ -895,6 +919,9 @@ export default function GameScreen() {
           )}
         </View>
         <View style={gameStyles.topBtnsRight}>
+          <TouchableOpacity onPress={() => setShowSubscribe(true)} style={gameStyles.topBtn}>
+            <Ionicons name="star" size={20} color={isSubscribed ? Colors.gold : '#6B7280'} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowPlayers(true)} style={gameStyles.topBtn}>
             <Ionicons name="people" size={22} color="#9CA3AF" />
           </TouchableOpacity>
@@ -1008,7 +1035,7 @@ export default function GameScreen() {
                 </View>
               </TouchableOpacity>
             )}
-            {!adWatched && (
+            {!isSubscribed && !adWatched && (
               <TouchableOpacity style={gameStyles.adWatchBtn} onPress={openAdModal}>
                 <Ionicons name="play-circle" size={15} color={Colors.gold} />
                 <Text style={gameStyles.adWatchBtnText}>+1,500 DHS</Text>
@@ -1265,12 +1292,71 @@ export default function GameScreen() {
 
       {/* ─── Banner Ad Placeholder ────────────────────────────────────────── */}
       {/* TODO: Replace with real AdMob BannerAd from react-native-google-mobile-ads */}
-      {adWatched && (
+      {!isSubscribed && adWatched && (
         <View style={[gameStyles.bannerAd, { marginBottom: insets.bottom }]}>
           <Text style={gameStyles.bannerAdText}>🌟 Dawaar — Discover the Arab World</Text>
           <Text style={gameStyles.bannerAdSub}>AD</Text>
         </View>
       )}
+
+      {/* ─── Dice Roll GIF Overlay ────────────────────────────────────────── */}
+      {diceAnimating && (
+        <View style={gameStyles.diceGifOverlay} pointerEvents="none">
+          <ExpoImage
+            source={DICE_GIF}
+            style={gameStyles.diceGifImg}
+            contentFit="contain"
+          />
+        </View>
+      )}
+
+      {/* ─── Interstitial Ad Modal ────────────────────────────────────────── */}
+      {/* TODO: Replace inner content with real AdMob InterstitialAd */}
+      <Modal visible={showInterstitial} transparent animationType="fade" onRequestClose={() => setShowInterstitial(false)}>
+        <View style={gameStyles.interstitialOverlay}>
+          <View style={gameStyles.interstitialCard}>
+            <View style={gameStyles.interstitialHeader}>
+              <View style={gameStyles.adSponsorBadge}>
+                <Text style={gameStyles.adSponsorText}>ADVERTISEMENT</Text>
+              </View>
+              <TouchableOpacity
+                style={gameStyles.interstitialCloseBtn}
+                onPress={() => setShowInterstitial(false)}
+              >
+                <Ionicons name="close" size={16} color="rgba(255,255,255,0.5)" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Ad content placeholder */}
+            <View style={gameStyles.interstitialContent}>
+              <View style={gameStyles.interstitialArtwork}>
+                <Text style={gameStyles.interstitialArtworkEmoji}>🕌</Text>
+              </View>
+              <Text style={gameStyles.interstitialTitle}>Dawaar Premium</Text>
+              <Text style={gameStyles.interstitialBody}>
+                Enjoy Dawaar without interruptions. Remove all ads with a Premium subscription.
+              </Text>
+              <TouchableOpacity
+                style={gameStyles.interstitialCta}
+                onPress={() => { setShowInterstitial(false); setShowSubscribe(true); }}
+              >
+                <LinearGradient colors={[Colors.gold, '#A07830']} style={gameStyles.interstitialCtaGrad}>
+                  <Text style={gameStyles.interstitialCtaText}>Start Free Trial</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={gameStyles.interstitialSkip}
+                onPress={() => setShowInterstitial(false)}
+              >
+                <Text style={gameStyles.interstitialSkipText}>Continue without Premium</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Subscribe Modal ──────────────────────────────────────────────── */}
+      <SubscribeModal visible={showSubscribe} onClose={() => setShowSubscribe(false)} />
 
     </View>
   );
@@ -1965,5 +2051,104 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: 'rgba(255,255,255,0.25)',
     letterSpacing: 1,
+  },
+
+  /* ── Dice GIF overlay ── */
+  diceGifOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(8,15,26,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  diceGifImg: {
+    width: 240,
+    height: 240,
+  },
+
+  /* ── Interstitial modal ── */
+  interstitialOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  interstitialCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#0C1625',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.2)',
+    overflow: 'hidden',
+  },
+  interstitialHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  interstitialCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  interstitialContent: {
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  interstitialArtwork: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: Colors.gold + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  interstitialArtworkEmoji: {
+    fontSize: 36,
+  },
+  interstitialTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+  },
+  interstitialBody: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  interstitialCta: {
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  interstitialCtaGrad: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  interstitialCtaText: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.darkBg,
+  },
+  interstitialSkip: {
+    paddingVertical: 10,
+  },
+  interstitialSkipText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.35)',
   },
 });

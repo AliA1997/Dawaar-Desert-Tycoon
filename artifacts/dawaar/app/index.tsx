@@ -20,12 +20,16 @@ import * as Haptics from 'expo-haptics';
 
 import Colors from '@/constants/colors';
 import { useGame, TOKENS } from '@/context/GameContext';
+import { useSubscription } from '@/hooks/useSubscription';
+import SubscribeModal from '@/components/SubscribeModal';
 
 type Screen = 'mode' | 'singleplayer' | 'multiplayer';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { createGame, createSinglePlayerGame, joinGame, isLoading, error, clearError, myPlayerName } = useGame();
+  const { isSubscribed } = useSubscription();
+  const [showSubscribe, setShowSubscribe] = useState(false);
 
   const [screen, setScreen] = useState<Screen>('mode');
   const [mpTab, setMpTab] = useState<'create' | 'join'>('create');
@@ -158,6 +162,17 @@ export default function HomeScreen() {
               <Text style={styles.footer}>
                 Inspired by the cities and landmarks of the Arab World
               </Text>
+
+              <TouchableOpacity
+                style={[styles.premiumBtn, isSubscribed && styles.premiumBtnActive]}
+                onPress={() => setShowSubscribe(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="star" size={14} color={isSubscribed ? Colors.darkBg : Colors.gold} />
+                <Text style={[styles.premiumBtnText, isSubscribed && styles.premiumBtnTextActive]}>
+                  {isSubscribed ? 'Premium Active' : 'Go Premium — Remove Ads'}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -266,6 +281,8 @@ export default function HomeScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <SubscribeModal visible={showSubscribe} onClose={() => setShowSubscribe(false)} />
     </View>
   );
 }
@@ -479,4 +496,31 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: 16, fontFamily: 'Inter_700Bold', color: Colors.darkBg },
 
   footer: { textAlign: 'center', fontSize: 12, fontFamily: 'Inter_400Regular', color: '#374151', marginTop: 16, paddingHorizontal: 10 },
+
+  premiumBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.gold + '55',
+    backgroundColor: Colors.gold + '0C',
+    alignSelf: 'center',
+  },
+  premiumBtnActive: {
+    backgroundColor: Colors.gold,
+    borderColor: Colors.gold,
+  },
+  premiumBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.gold,
+  },
+  premiumBtnTextActive: {
+    color: Colors.darkBg,
+  },
 });
