@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Alert,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -314,7 +315,10 @@ function TokenPicker({ selected, onSelect }: { selected: string; onSelect: (t: s
             style={[styles.tokenBtn, selected === token.id && styles.tokenBtnActive]}
             onPress={() => onSelect(token.id)}
           >
-            <Ionicons name={token.icon as any} size={22} color={selected === token.id ? Colors.gold : '#6B7280'} />
+            <Image
+              source={token.image}
+              style={[styles.tokenImg, !( selected === token.id) && { opacity: 0.45 }]}
+            />
             <Text style={[styles.tokenLabel, selected === token.id && styles.tokenLabelActive]}>
               {token.label}
             </Text>
@@ -449,6 +453,7 @@ const styles = StyleSheet.create({
   tokenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tokenBtn: { flex: 1, minWidth: '28%', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6, backgroundColor: Colors.darkBg, borderRadius: 12, borderWidth: 1, borderColor: Colors.borderColor, gap: 4 },
   tokenBtnActive: { borderColor: Colors.gold, backgroundColor: 'rgba(201,168,76,0.1)' },
+  tokenImg: { width: 36, height: 36, resizeMode: 'contain' },
   tokenLabel: { fontSize: 10, fontFamily: 'Inter_500Medium', color: '#6B7280', textAlign: 'center' },
   tokenLabelActive: { color: Colors.gold },
 

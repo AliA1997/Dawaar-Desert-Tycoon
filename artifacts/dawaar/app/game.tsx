@@ -10,6 +10,7 @@ import {
   Alert,
   FlatList,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import Colors from '@/constants/colors';
-import { useGame, TOKENS } from '@/context/GameContext';
+import { useGame, TOKENS, getTokenImage } from '@/context/GameContext';
 import type { BoardProperty, Player } from '@/context/GameContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -843,7 +844,6 @@ export default function GameScreen() {
     ]);
   };
 
-  const getTokenIcon = (tokenId: string) => TOKENS.find(t => t.id === tokenId)?.icon || 'person';
 
   return (
     <View style={gameStyles.container}>
@@ -921,7 +921,7 @@ export default function GameScreen() {
         <View style={gameStyles.myStatus}>
           <View style={gameStyles.myStatusLeft}>
             <View style={[gameStyles.tokenBg, { backgroundColor: myPlayer.color + '22' }]}>
-              <Ionicons name={getTokenIcon(myPlayer.token) as any} size={18} color={myPlayer.color} />
+              <Image source={getTokenImage(myPlayer.token)} style={gameStyles.statusTokenImg} />
             </View>
             <View>
               <Text style={gameStyles.myMoney}>{myPlayer.money.toLocaleString()} DHS</Text>
@@ -1123,7 +1123,7 @@ export default function GameScreen() {
                   <View key={player.id} style={[gameStyles.playerCard, player.isBankrupt && gameStyles.playerCardBankrupt]}>
                     <View style={gameStyles.playerCardHeader}>
                       <View style={[gameStyles.playerColorBg, { backgroundColor: player.color + '22' }]}>
-                        <Ionicons name={getTokenIcon(player.token) as any} size={22} color={player.color} />
+                        <Image source={getTokenImage(player.token)} style={gameStyles.modalTokenImg} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1243,6 +1243,11 @@ const gameStyles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  statusTokenImg: {
+    width: 26,
+    height: 26,
+    resizeMode: 'contain',
   },
   myMoney: {
     fontSize: 16,
@@ -1457,6 +1462,11 @@ const gameStyles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalTokenImg: {
+    width: 30,
+    height: 30,
+    resizeMode: 'contain',
   },
   playerCardName: {
     fontSize: 15,

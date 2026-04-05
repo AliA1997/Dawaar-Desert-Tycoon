@@ -63,13 +63,17 @@ export interface GameState {
 }
 
 export const TOKENS = [
-  { id: 'camel', label: 'Camel', icon: 'paw' },
-  { id: 'falcon', label: 'Falcon', icon: 'eye' },
-  { id: 'dhow', label: 'Dhow', icon: 'navigate' },
-  { id: 'palm', label: 'Palm Tree', icon: 'leaf' },
-  { id: 'crescent', label: 'Crescent', icon: 'moon' },
-  { id: 'lamp', label: 'Oil Lamp', icon: 'bulb' },
+  { id: 'camel',    label: 'Camel',    image: require('../assets/tokens/camel.png') },
+  { id: 'falcon',   label: 'Falcon',   image: require('../assets/tokens/falcon.png') },
+  { id: 'dhow',     label: 'Tiger',    image: require('../assets/tokens/tiger.png') },
+  { id: 'palm',     label: 'Big Cat',  image: require('../assets/tokens/big.png') },
+  { id: 'crescent', label: 'Camel',    image: require('../assets/tokens/mammal.png') },
+  { id: 'lamp',     label: 'Lantern',  image: require('../assets/tokens/lantern.png') },
 ];
+
+export function getTokenImage(tokenId: string): any {
+  return TOKENS.find(t => t.id === tokenId)?.image ?? require('../assets/tokens/camel.png');
+}
 
 export const NPC_NAMES = ['Khalid', 'Tariq', 'Omar', 'Layla', 'Zaid'];
 export const NPC_TOKENS = ['falcon', 'dhow', 'palm', 'crescent', 'lamp'];

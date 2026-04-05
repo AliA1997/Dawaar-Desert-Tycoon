@@ -8,6 +8,7 @@ import {
   Platform,
   Share,
   Alert,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 
 import Colors from '@/constants/colors';
-import { useGame, TOKENS } from '@/context/GameContext';
+import { useGame, getTokenImage } from '@/context/GameContext';
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
@@ -63,9 +64,6 @@ export default function LobbyScreen() {
     ]);
   };
 
-  const getTokenIcon = (tokenId: string) => {
-    return TOKENS.find(t => t.id === tokenId)?.icon || 'person';
-  };
 
   return (
     <View style={styles.container}>
@@ -115,10 +113,9 @@ export default function LobbyScreen() {
           {gameState.players.map((player, idx) => (
             <View key={player.id} style={styles.playerRow}>
               <View style={[styles.playerTokenBg, { backgroundColor: player.color + '22' }]}>
-                <Ionicons
-                  name={getTokenIcon(player.token) as any}
-                  size={20}
-                  color={player.color}
+                <Image
+                  source={getTokenImage(player.token)}
+                  style={styles.playerTokenImg}
                 />
               </View>
               <View style={styles.playerInfo}>
@@ -337,6 +334,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  playerTokenImg: {
+    width: 28,
+    height: 28,
+    resizeMode: 'contain',
   },
   playerInfo: {
     flex: 1,
