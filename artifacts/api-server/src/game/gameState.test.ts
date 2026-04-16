@@ -324,9 +324,10 @@ describe('POST /api/games/:id/pay-jail endpoint', () => {
       .send({ playerId: 'alice' });
 
     expect(res.status).toBe(200);
-    const alice = res.body.players.find((p: any) => p.id === 'alice');
-    expect(alice.inJail).toBe(false);
-    expect(alice.money).toBe(moneyBefore - 500);
+    const alice = (res.body.players as { id: string; inJail: boolean; money: number }[]).find(p => p.id === 'alice');
+    expect(alice).toBeDefined();
+    expect(alice!.inJail).toBe(false);
+    expect(alice!.money).toBe(moneyBefore - 500);
   });
 
   it('returns 404 when game does not exist', async () => {
