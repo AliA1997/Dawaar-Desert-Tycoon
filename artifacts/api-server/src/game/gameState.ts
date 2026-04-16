@@ -13,6 +13,7 @@ export interface Player {
   jailTurns: number;
   isBankrupt: boolean;
   color: string;
+  doublesCount: number;
 }
 
 export interface BoardProperty {
@@ -95,6 +96,7 @@ export function createGame(gameId: string, playerName: string, playerId: string,
     jailTurns: 0,
     isBankrupt: false,
     color: PLAYER_COLORS[0],
+    doublesCount: 0,
   };
 
   return {
@@ -129,6 +131,7 @@ export function joinGame(state: GameState, playerName: string, playerId: string,
     jailTurns: 0,
     isBankrupt: false,
     color: PLAYER_COLORS[colorIndex],
+    doublesCount: 0,
   };
 
   const newState = {
@@ -205,6 +208,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
   if (state.hasRolled) return { state, dice: [], isDoubles: false, error: 'Already rolled this turn' };
 
   const player = state.players.find(p => p.id === playerId)!;
+  const wasInJail = player.inJail;
   const d1 = rollDie();
   const d2 = rollDie();
   const total = d1 + d2;
@@ -222,10 +226,10 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
       const jailTurns = player.jailTurns + 1;
       if (jailTurns >= 3) {
         logs.push({ message: `${player.name} paid 500 DHS bail after 3 turns in jail`, timestamp: new Date().toISOString(), playerId });
-        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, inJail: false, jailTurns: 0, money: p.money - 500 } : p);
+        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, inJail: false, jailTurns: 0, money: p.money - 500, doublesCount: 0 } : p);
       } else {
         logs.push({ message: `${player.name} is stuck in jail (turn ${jailTurns})`, timestamp: new Date().toISOString(), playerId });
-        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, jailTurns } : p);
+        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, jailTurns, doublesCount: 0 } : p);
         return {
           state: { ...state, players: newPlayers, diceRoll: [d1, d2], hasRolled: true, version: state.version + 1, log: [...state.log, ...logs] },
           dice: [d1, d2],
@@ -255,7 +259,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 10, inJail: true, jailTurns: 0 } : p);
     logs.push({ message: `${player.name} is sent to jail!`, timestamp: new Date().toISOString() });
   } else if (landedSpace.type === 'tax') {
-    const tax = (BOARD[newPosition] as any).taxAmount || 0;
+    const tax = (BOARD[newPosition] as any).taxAmount ?? 0;
     newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money - tax } : p);
     logs.push({ message: `${player.name} paid ${tax} DHS tax`, timestamp: new Date().toISOString() });
   } else if (landedSpace.type === 'chance') {
@@ -269,7 +273,6 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     ({ newPlayers, newBoard } = applyCardAction(card.action, playerId, newPlayers, newBoard, state, total, logs));
     newPosition = newPlayers.find(p => p.id === playerId)!.position;
   } else if ((landedSpace.type === 'property' || landedSpace.type === 'railroad' || landedSpace.type === 'utility') && landedSpace.ownerId && landedSpace.ownerId !== playerId) {
-    // Pay rent
     const rent = calculateRent({ ...state, board: newBoard, players: newPlayers }, newPosition, total);
     if (rent > 0) {
       newPlayers = newPlayers.map(p => {
@@ -281,14 +284,24 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     }
   }
 
-  // Check bankruptcies
-  newPlayers = newPlayers.map(p => {
-    if (p.money < 0 && !p.isBankrupt) {
-      logs.push({ message: `${p.name} is bankrupt!`, timestamp: new Date().toISOString() });
-      return { ...p, isBankrupt: true };
-    }
-    return p;
-  });
+  // Check bankruptcies — clear their properties from the board
+  const newlyBankrupt = newPlayers.filter(p => p.money < 0 && !p.isBankrupt);
+  if (newlyBankrupt.length > 0) {
+    const bankruptIds = new Set(newlyBankrupt.map(p => p.id));
+    newBoard = newBoard.map(s => {
+      if (s.ownerId && bankruptIds.has(s.ownerId)) {
+        return { ...s, ownerId: null, houses: 0, hotel: false, isMortgaged: false };
+      }
+      return s;
+    });
+    newPlayers = newPlayers.map(p => {
+      if (bankruptIds.has(p.id)) {
+        logs.push({ message: `${p.name} is bankrupt! Properties returned to market.`, timestamp: new Date().toISOString() });
+        return { ...p, isBankrupt: true, properties: [], doublesCount: 0 };
+      }
+      return p;
+    });
+  }
 
   // Check win condition
   const activePlayers = newPlayers.filter(p => !p.isBankrupt);
@@ -300,12 +313,45 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     logs.push({ message: `${activePlayers[0].name} wins the game!`, timestamp: new Date().toISOString() });
   }
 
+  // ── Doubles rule ────────────────────────────────────────────────────────────
+  // If player rolled doubles, grant a re-roll UNLESS:
+  //   - they landed in jail (go_to_jail space or card)
+  //   - they escaped jail via doubles (first roll after jail escape is not a bonus)
+  const playerFinal = newPlayers.find(p => p.id === playerId)!;
+  const nowInJail = playerFinal.inJail;
+  const escapedJailViaDoubles = wasInJail && isDoubles && !nowInJail;
+  let finalHasRolled = true;
+
+  if (isDoubles && !nowInJail && !escapedJailViaDoubles && newStatus !== 'finished') {
+    const newDoublesCount = (player.doublesCount ?? 0) + 1;
+    if (newDoublesCount >= 3) {
+      // Triple consecutive doubles → send to jail
+      newPlayers = newPlayers.map(p => p.id === playerId
+        ? { ...p, position: 10, inJail: true, jailTurns: 0, doublesCount: 0 }
+        : p);
+      logs.push({ message: `${player.name} rolled doubles 3 times and is sent to jail!`, timestamp: new Date().toISOString() });
+      finalHasRolled = true;
+    } else {
+      // Grant re-roll
+      newPlayers = newPlayers.map(p => p.id === playerId
+        ? { ...p, doublesCount: newDoublesCount }
+        : p);
+      finalHasRolled = false;
+    }
+  } else {
+    // Non-doubles, jail, or escaped via doubles: reset counter
+    newPlayers = newPlayers.map(p => p.id === playerId
+      ? { ...p, doublesCount: 0 }
+      : p);
+    finalHasRolled = true;
+  }
+
   const newState: GameState = {
     ...state,
     players: newPlayers,
     board: newBoard,
     diceRoll: [d1, d2],
-    hasRolled: true,
+    hasRolled: finalHasRolled,
     version: state.version + 1,
     log: [...state.log, ...logs].slice(-50),
     status: newStatus,
@@ -352,7 +398,6 @@ function applyCardAction(action: string, playerId: string, players: Player[], bo
       break;
     case 'collect_1000_each': {
       const amount = 1000;
-      const others = newPlayers.filter(p => p.id !== playerId && !p.isBankrupt);
       let total = 0;
       newPlayers = newPlayers.map(p => {
         if (p.id !== playerId && !p.isBankrupt) { total += amount; return { ...p, money: p.money - amount }; }
@@ -379,7 +424,8 @@ function applyCardAction(action: string, playerId: string, players: Player[], bo
       break;
     }
     case 'back_3':
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: Math.max(0, p.position - 3) } : p);
+      // Correct board wrap: position 1 - 3 = position 38 (not 0)
+      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: (p.position - 3 + 40) % 40 } : p);
       break;
   }
 
@@ -426,6 +472,36 @@ export function endTurn(state: GameState, playerId: string): { state: GameState;
       diceRoll: null,
       version: state.version + 1,
       log: [...state.log, { message: `${nextPlayer.name}'s turn`, timestamp: new Date().toISOString() }].slice(-50),
+      // Reset doubles counter for the player who just ended their turn
+      players: state.players.map(p => p.id === playerId ? { ...p, doublesCount: 0 } : p),
+    },
+  };
+}
+
+export function payJail(state: GameState, playerId: string): { state: GameState; error?: string } {
+  if (state.status !== 'playing') return { state, error: 'Game not in progress' };
+  if (state.currentPlayerId !== playerId) return { state, error: 'Not your turn' };
+  if (state.hasRolled) return { state, error: 'Cannot pay bail after rolling' };
+
+  const player = state.players.find(p => p.id === playerId);
+  if (!player) return { state, error: 'Player not found' };
+  if (!player.inJail) return { state, error: 'You are not in jail' };
+  if (player.money < 500) return { state, error: 'Not enough money to pay bail (500 DHS required)' };
+
+  const newPlayers = state.players.map(p =>
+    p.id === playerId ? { ...p, inJail: false, jailTurns: 0, money: p.money - 500, doublesCount: 0 } : p
+  );
+
+  return {
+    state: {
+      ...state,
+      players: newPlayers,
+      version: state.version + 1,
+      log: [...state.log, {
+        message: `${player.name} paid 500 DHS bail and is free to roll!`,
+        timestamp: new Date().toISOString(),
+        playerId,
+      }].slice(-50),
     },
   };
 }
@@ -510,12 +586,10 @@ export function mortgageProperty(state: GameState, playerId: string, propertyInd
 }
 
 export function proposeTrade(state: GameState, trade: TradeOffer): { state: GameState; error?: string } {
-  // Simple trade: directly apply if accepted by setting pendingTrade
   const fromPlayer = state.players.find(p => p.id === trade.fromPlayerId);
   const toPlayer = state.players.find(p => p.id === trade.toPlayerId);
   if (!fromPlayer || !toPlayer) return { state, error: 'Player not found' };
 
-  // Validate ownership
   for (const idx of trade.offeredPropertyIndices) {
     if (state.board[idx]?.ownerId !== trade.fromPlayerId) return { state, error: 'You do not own all offered properties' };
   }
@@ -542,14 +616,12 @@ export function acceptTrade(state: GameState, playerId: string): { state: GameSt
   let newPlayers = [...state.players];
   let newBoard = [...state.board];
 
-  // Exchange money
   newPlayers = newPlayers.map(p => {
     if (p.id === trade.fromPlayerId) return { ...p, money: p.money - trade.offeredMoney + trade.requestedMoney };
     if (p.id === trade.toPlayerId) return { ...p, money: p.money - trade.requestedMoney + trade.offeredMoney };
     return p;
   });
 
-  // Exchange properties
   for (const idx of trade.offeredPropertyIndices) {
     newBoard = newBoard.map((s, i) => i === idx ? { ...s, ownerId: trade.toPlayerId } : s);
     newPlayers = newPlayers.map(p => {

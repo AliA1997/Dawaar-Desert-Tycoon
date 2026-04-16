@@ -694,7 +694,7 @@ export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const {
     gameState, myPlayerId, myPlayer, isMyTurn,
-    rollDice, buyProperty, buildHouse, endTurn, leaveGame,
+    rollDice, buyProperty, buildHouse, endTurn, payJail, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
     claimAdReward,
@@ -891,6 +891,11 @@ export default function GameScreen() {
     await buyProperty();
   };
 
+  const handlePayJail = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await payJail();
+  };
+
   const handleLeave = () => {
     Alert.alert('Leave Game', 'Are you sure? The game will continue without you.', [
       { text: 'Cancel', style: 'cancel' },
@@ -1003,11 +1008,19 @@ export default function GameScreen() {
       <View style={[gameStyles.actionsPanel, { paddingBottom: botPad + 8 }]}>
         {isMyTurn ? (
           <View style={gameStyles.actionBtns}>
+            {!gameState.hasRolled && myPlayer?.inJail && (
+              <TouchableOpacity style={gameStyles.buyBtn} onPress={handlePayJail}>
+                <LinearGradient colors={['#EF4444', '#B91C1C']} style={gameStyles.buyBtnGrad}>
+                  <Ionicons name="exit" size={20} color="white" />
+                  <Text style={gameStyles.buyBtnText}>Pay 500 DHS — Leave Jail</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
             {!gameState.hasRolled && (
               <TouchableOpacity style={gameStyles.rollBtn} onPress={handleRoll}>
                 <LinearGradient colors={[Colors.gold, '#A07830']} style={gameStyles.rollBtnGrad}>
                   <Ionicons name="dice" size={22} color={Colors.darkBg} />
-                  <Text style={gameStyles.rollBtnText}>Roll Dice</Text>
+                  <Text style={gameStyles.rollBtnText}>{myPlayer?.inJail ? 'Roll for Doubles' : 'Roll Dice'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}

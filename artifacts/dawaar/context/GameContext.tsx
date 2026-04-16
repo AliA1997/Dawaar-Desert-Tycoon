@@ -14,6 +14,7 @@ export interface Player {
   jailTurns: number;
   isBankrupt: boolean;
   color: string;
+  doublesCount: number;
 }
 
 export interface BoardProperty {
@@ -96,6 +97,7 @@ interface GameContextType {
   rollDice: () => Promise<{ dice: number[]; isDoubles: boolean } | null>;
   buyProperty: () => Promise<void>;
   endTurn: () => Promise<void>;
+  payJail: () => Promise<void>;
   buildHouse: (propertyIndex: number) => Promise<void>;
   mortgageProperty: (propertyIndex: number, action: 'mortgage' | 'unmortgage') => Promise<void>;
   proposeTrade: (toPlayerId: string, offeredProps: number[], requestedProps: number[], offeredMoney: number, requestedMoney: number) => Promise<void>;
@@ -213,42 +215,57 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const runNpcTurn = async () => {
       try {
         setNpcThinking(true);
+        let currentState = gameState!;
+        let grantedReRoll = false;
 
-        // 1. Pause to simulate "thinking"
-        await delay(1200 + Math.random() * 800);
+        // Loop to handle doubles re-rolls
+        do {
+          grantedReRoll = false;
 
-        // 2. Roll dice
-        const rollData = await api(`/games/${gameState.gameId}/roll`, 'POST', { playerId: currentId });
-        const updatedState: GameState = rollData.gameState;
-        setGameState(updatedState);
-        setLastDiceRoll(rollData.dice);
+          // 1. Pause to simulate "thinking"
+          await delay(1200 + Math.random() * 800);
 
-        await delay(1000);
+          // 2. Roll dice
+          const rollData = await api(`/games/${currentState.gameId}/roll`, 'POST', { playerId: currentId });
+          currentState = rollData.gameState as GameState;
+          setGameState(currentState);
+          setLastDiceRoll(rollData.dice);
 
-        // 3. Decide whether to buy the landed property
-        const npcPlayer = updatedState.players.find(p => p.id === currentId);
-        if (npcPlayer) {
-          const landedSpace = updatedState.board[npcPlayer.position];
-          const canBuy =
-            landedSpace &&
-            (landedSpace.type === 'property' || landedSpace.type === 'railroad' || landedSpace.type === 'utility') &&
-            !landedSpace.ownerId &&
-            landedSpace.price != null &&
-            npcPlayer.money >= landedSpace.price &&
-            npcPlayer.money - landedSpace.price > 2000; // keep a reserve
+          await delay(1000);
 
-          if (canBuy) {
-            await delay(700);
-            const boughtState = await api(`/games/${gameState.gameId}/buy`, 'POST', { playerId: currentId });
-            setGameState(boughtState);
+          // 3. Decide whether to buy the landed property
+          const npcPlayer = currentState.players.find(p => p.id === currentId);
+          if (npcPlayer) {
+            const landedSpace = currentState.board[npcPlayer.position];
+            const canBuy =
+              landedSpace &&
+              (landedSpace.type === 'property' || landedSpace.type === 'railroad' || landedSpace.type === 'utility') &&
+              !landedSpace.ownerId &&
+              landedSpace.price != null &&
+              npcPlayer.money >= landedSpace.price &&
+              npcPlayer.money - landedSpace.price > 2000;
+
+            if (canBuy) {
+              await delay(700);
+              const boughtState = await api(`/games/${currentState.gameId}/buy`, 'POST', { playerId: currentId });
+              currentState = boughtState as GameState;
+              setGameState(currentState);
+              await delay(600);
+            }
+          }
+
+          // 4. If doubles were rolled and player is not in jail, loop for re-roll
+          const npcNow = currentState.players.find(p => p.id === currentId);
+          if (rollData.isDoubles && npcNow && !npcNow.inJail && !currentState.hasRolled) {
+            grantedReRoll = true;
             await delay(600);
           }
-        }
+        } while (grantedReRoll);
 
-        // 4. End turn
+        // 5. End turn
         await delay(800);
-        const endState = await api(`/games/${gameState.gameId}/end-turn`, 'POST', { playerId: currentId });
-        setGameState(endState);
+        const endState = await api(`/games/${currentState.gameId}/end-turn`, 'POST', { playerId: currentId });
+        setGameState(endState as GameState);
       } catch {
         // silently ignore bot errors
       } finally {
@@ -426,6 +443,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [gameState, myPlayerId]);
 
+  const payJail = useCallback(async () => {
+    if (!gameState || !myPlayerId) return;
+    setError(null);
+    try {
+      const state = await api(`/games/${gameState.gameId}/pay-jail`, 'POST', { playerId: myPlayerId });
+      setGameState(state);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [gameState, myPlayerId]);
+
   const buildHouse = useCallback(async (propertyIndex: number) => {
     if (!gameState || !myPlayerId) return;
     setError(null);
@@ -528,6 +556,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       rollDice,
       buyProperty,
       endTurn,
+      payJail,
       buildHouse,
       mortgageProperty,
       proposeTrade,

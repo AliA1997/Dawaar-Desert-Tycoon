@@ -22,7 +22,7 @@ export const BOARD: BoardSpace[] = [
   { index: 1,  name: 'Tunis',            nameAr: 'تونس',               type: 'property', price: 600,  rent: [40,  200,  600, 1800, 3200, 5000],  houseCost: 500,  hotelCost: 500,  mortgageValue: 300,  colorGroup: 'brown' },
   { index: 2,  name: 'Community Chest',  nameAr: 'صندوق المجتمع',       type: 'community' },
   { index: 3,  name: "Sana'a",           nameAr: 'صنعاء',              type: 'property', price: 800,  rent: [60,  300,  900, 2700, 4000, 5500],  houseCost: 500,  hotelCost: 500,  mortgageValue: 400,  colorGroup: 'brown' },
-  { index: 4,  name: 'Zakat Tax',        nameAr: 'ضريبة الزكاة',        type: 'tax', taxAmount: 2000 },
+  { index: 4,  name: 'Zakat Tax',        nameAr: 'ضريبة الزكاة',        type: 'tax', taxAmount: 500 },
   { index: 5,  name: 'Haramain Railway', nameAr: 'قطار الحرمين',        type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
   // ─── LIGHT BLUE ─────────────────────────────────────────────────────────────
   { index: 6,  name: 'Khartoum',         nameAr: 'الخرطوم',            type: 'property', price: 1000, rent: [60,  300,  900, 2700, 4000, 5500],  houseCost: 500,  hotelCost: 500,  mortgageValue: 500,  colorGroup: 'lightblue' },
@@ -63,7 +63,7 @@ export const BOARD: BoardSpace[] = [
   { index: 36, name: 'Chance',           nameAr: 'الحظ',               type: 'chance' },
   // ─── DARK BLUE — most expensive ──────────────────────────────────────────────
   { index: 37, name: 'Istanbul',         nameAr: 'إسطنبول',            type: 'property', price: 3500, rent: [350, 1750, 5000, 11000, 13000, 15000], houseCost: 2000, hotelCost: 2000, mortgageValue: 1750, colorGroup: 'darkblue' },
-  { index: 38, name: 'Oil Revenue Tax',  nameAr: 'ضريبة النفط',         type: 'tax', taxAmount: 750 },
+  { index: 38, name: 'Oil Revenue Tax',  nameAr: 'ضريبة النفط',         type: 'tax', taxAmount: 2000 },
   { index: 39, name: 'Dubai',            nameAr: 'دبي',                type: 'property', price: 4000, rent: [500, 2000, 6000, 14000, 17000, 20000], houseCost: 2000, hotelCost: 2000, mortgageValue: 2000, colorGroup: 'darkblue' },
 ];
 
