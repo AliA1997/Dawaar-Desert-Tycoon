@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import request from 'supertest';
+import app from '../app.js';
 import {
   createGame,
   joinGame,
@@ -6,28 +8,31 @@ import {
   rollDice,
   endTurn,
   payJail,
-  buyProperty,
 } from './gameState.js';
-import { BOARD } from './board.js';
+import { setGame } from './gameStore.js';
+import { BOARD, CHANCE_CARDS } from './board.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeTwoPlayerGame() {
-  let state = createGame('test-game', 'Alice', 'alice', 'camel');
+function makeTwoPlayerGame(gameId = 'test-game') {
+  let state = createGame(gameId, 'Alice', 'alice', 'camel');
   ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
   ({ state } = startGame(state, 'alice'));
   return state;
 }
 
-/** Force Math.random to produce specific die values.
+/** Spy Math.random to return specific die values in sequence.
  *  rollDie() = Math.floor(Math.random() * 6) + 1
- *  To get value V, supply (V - 1) / 6
+ *  To get die value V (1-6), supply (V - 1) / 6
  */
-function mockDice(...values: number[]) {
-  const mocked = vi.spyOn(Math, 'random');
-  values.forEach(v => mocked.mockReturnValueOnce((v - 1) / 6));
-  return mocked;
+function mockDiceSeq(...values: number[]) {
+  const spy = vi.spyOn(Math, 'random');
+  values.forEach(v => spy.mockReturnValueOnce(v));
+  return spy;
 }
+
+/** Given a desired die value 1-6, return the Math.random value that produces it */
+const die = (v: number) => (v - 1) / 6;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -38,17 +43,17 @@ afterEach(() => {
 describe('Doubles rule', () => {
   it('grants a re-roll when doubles are rolled (hasRolled stays false)', () => {
     const state = makeTwoPlayerGame();
-    // Mock [3, 3] doubles
-    mockDice(3, 3);
+    mockDiceSeq(die(3), die(3));
     const { state: after, isDoubles } = rollDice(state, 'alice');
     expect(isDoubles).toBe(true);
-    expect(after.hasRolled).toBe(false); // re-roll granted
-    expect(after.currentPlayerId).toBe('alice'); // still alice's turn
+    expect(after.hasRolled).toBe(false);
+    expect(after.currentPlayerId).toBe('alice');
+    expect(after.players.find(p => p.id === 'alice')!.doublesCount).toBe(1);
   });
 
   it('does NOT grant a re-roll on non-doubles', () => {
     const state = makeTwoPlayerGame();
-    mockDice(2, 5);
+    mockDiceSeq(die(2), die(5));
     const { state: after, isDoubles } = rollDice(state, 'alice');
     expect(isDoubles).toBe(false);
     expect(after.hasRolled).toBe(true);
@@ -57,75 +62,110 @@ describe('Doubles rule', () => {
   it('sends player to jail on third consecutive doubles', () => {
     let state = makeTwoPlayerGame();
 
-    // Roll 1: doubles [2,2] — re-roll granted
-    mockDice(2, 2, 1, 1); // also feed card-draw random if needed
+    // Roll 1: [2,2] doubles
+    mockDiceSeq(die(2), die(2));
     ({ state } = rollDice(state, 'alice'));
     expect(state.hasRolled).toBe(false);
     expect(state.players[0].doublesCount).toBe(1);
 
-    // Roll 2: doubles [2,2] again
-    mockDice(2, 2, 1, 1);
+    // Roll 2: [3,3] doubles
+    mockDiceSeq(die(3), die(3));
     ({ state } = rollDice(state, 'alice'));
     expect(state.hasRolled).toBe(false);
     expect(state.players[0].doublesCount).toBe(2);
 
-    // Roll 3: third doubles → jail
-    mockDice(2, 2, 1, 1);
+    // Roll 3: [4,4] — third consecutive doubles → jail
+    mockDiceSeq(die(4), die(4));
     ({ state } = rollDice(state, 'alice'));
     const alice = state.players.find(p => p.id === 'alice')!;
     expect(alice.inJail).toBe(true);
     expect(alice.position).toBe(10);
     expect(alice.doublesCount).toBe(0);
-    expect(state.hasRolled).toBe(true); // cannot re-roll from jail
+    expect(state.hasRolled).toBe(true);
   });
 
   it('resets doublesCount to 0 after endTurn', () => {
     let state = makeTwoPlayerGame();
-    // Roll doubles, then end turn
-    mockDice(3, 3, 1, 2); // doubles, then non-doubles for second roll
+    // Roll doubles, then roll non-doubles
+    mockDiceSeq(die(3), die(3));
     ({ state } = rollDice(state, 'alice'));
     expect(state.players[0].doublesCount).toBe(1);
-    // Second roll (non-doubles)
-    mockDice(1, 2);
+
+    mockDiceSeq(die(1), die(2));
     ({ state } = rollDice(state, 'alice'));
     expect(state.hasRolled).toBe(true);
+
     ({ state } = endTurn(state, 'alice'));
     expect(state.players[0].doublesCount).toBe(0);
   });
-});
 
-// ─── Bug 2: back_3 board wrap ─────────────────────────────────────────────────
-
-describe('back_3 card action', () => {
-  it('wraps around the board from position 1 to position 38', () => {
-    // We test the card action by manually positioning alice at 1
-    // then triggering the chance card with back_3
+  it('does not grant re-roll when doubles escape jail', () => {
     let state = makeTwoPlayerGame();
-    // Place alice at position 1 (just past GO)
     state = {
       ...state,
-      players: state.players.map(p =>
-        p.id === 'alice' ? { ...p, position: 1 } : p
-      ),
+      players: state.players.map(p => p.id === 'alice' ? { ...p, inJail: true, jailTurns: 1 } : p),
+    };
+    // [2,2] doubles escape jail — should NOT grant a re-roll
+    mockDiceSeq(die(2), die(2));
+    const { state: after, isDoubles } = rollDice(state, 'alice');
+    expect(isDoubles).toBe(true);
+    // Player escaped jail (doublesCount resets, hasRolled=true because escapedJailViaDoubles)
+    expect(after.players.find(p => p.id === 'alice')!.inJail).toBe(false);
+    expect(after.hasRolled).toBe(true);
+  });
+});
+
+// ─── Bug 2: back_3 card via engine ───────────────────────────────────────────
+
+describe('back_3 card (engine level)', () => {
+  // Chance spaces are at board positions 7, 22, 36.
+  // We position alice just before a Chance space and mock dice to land on it,
+  // then mock the card draw to select the back_3 card.
+
+  const back3Index = CHANCE_CARDS.findIndex(c => c.action === 'back_3');
+
+  it('lands on Chance at position 7 and moves back 3 to position 4', () => {
+    let state = makeTwoPlayerGame();
+    // Position alice at 5 so rolling [1,1] = 2 lands on 7 (Chance)
+    state = {
+      ...state,
+      players: state.players.map(p => p.id === 'alice' ? { ...p, position: 5 } : p),
     };
 
-    // Import applyCardAction indirectly via a chance card landing.
-    // We test the math directly instead:
-    const before = 1;
-    const after = (before - 3 + 40) % 40;
-    expect(after).toBe(38);
+    // d1=1, d2=1 (total=2, lands on 7), then card selection for back_3
+    const cardRand = back3Index / CHANCE_CARDS.length;
+    mockDiceSeq(die(1), die(1), cardRand);
+
+    const { state: after } = rollDice(state, 'alice');
+    const alice = after.players.find(p => p.id === 'alice')!;
+    // 7 - 3 = 4 (Zakat Tax space)
+    expect(alice.position).toBe(4);
   });
 
-  it('does not wrap when player is at a normal position (e.g., 10)', () => {
-    const before = 10;
-    const after = (before - 3 + 40) % 40;
-    expect(after).toBe(7);
+  it('lands on Chance at position 36 and moves back 3 to position 33', () => {
+    let state = makeTwoPlayerGame();
+    // Position alice at 30 so rolling [3,3] = 6 lands on 36 (Chance)
+    state = {
+      ...state,
+      players: state.players.map(p => p.id === 'alice' ? { ...p, position: 30 } : p),
+    };
+
+    const cardRand = back3Index / CHANCE_CARDS.length;
+    mockDiceSeq(die(3), die(3), cardRand);
+
+    const { state: after } = rollDice(state, 'alice');
+    const alice = after.players.find(p => p.id === 'alice')!;
+    // 36 - 3 = 33 (Community Chest)
+    expect(alice.position).toBe(33);
   });
 
-  it('handles position 0 correctly (wraps to 37)', () => {
-    const before = 0;
-    const after = (before - 3 + 40) % 40;
-    expect(after).toBe(37);
+  it('wrap formula (pos - 3 + 40) % 40 is correct for all boundary values', () => {
+    // Verify the formula never clamps to 0 incorrectly (the old Math.max bug)
+    expect((2 - 3 + 40) % 40).toBe(39);
+    expect((1 - 3 + 40) % 40).toBe(38);
+    expect((0 - 3 + 40) % 40).toBe(37);
+    expect((7 - 3 + 40) % 40).toBe(4);  // normal case
+    expect((36 - 3 + 40) % 40).toBe(33); // another normal case
   });
 });
 
@@ -133,31 +173,43 @@ describe('back_3 card action', () => {
 
 describe('Tax space amounts', () => {
   it('Zakat Tax (space 4) costs 500 DHS', () => {
-    const zakatSpace = BOARD[4];
-    expect(zakatSpace.name).toBe('Zakat Tax');
-    expect(zakatSpace.taxAmount).toBe(500);
+    expect(BOARD[4].name).toBe('Zakat Tax');
+    expect(BOARD[4].taxAmount).toBe(500);
   });
 
   it('Oil Revenue Tax (space 38) costs 2000 DHS', () => {
-    const oilSpace = BOARD[38];
-    expect(oilSpace.name).toBe('Oil Revenue Tax');
-    expect(oilSpace.taxAmount).toBe(2000);
+    expect(BOARD[38].name).toBe('Oil Revenue Tax');
+    expect(BOARD[38].taxAmount).toBe(2000);
   });
 
-  it('deducts correct Zakat Tax (500 DHS) from player landing on space 4', () => {
+  it('deducts 500 DHS when player rolls onto Zakat Tax space', () => {
     let state = makeTwoPlayerGame();
-    // Position alice at space 3, roll [1,0] is invalid — instead position at 3 and roll [1,1] doubles
-    // Since space 4 is tax, we need to land on it: position 3, roll total 1 (not possible with 2 dice).
-    // Use position 2, roll [1,1] = 2 → lands on space 4
+    // Position alice at 2, roll [1,1] = 2 → lands on space 4 (Zakat Tax)
     state = {
       ...state,
       players: state.players.map(p => p.id === 'alice' ? { ...p, position: 2 } : p),
     };
-    const moneybefore = state.players[0].money;
-    mockDice(1, 1); // doubles, lands on space 4
+    const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
+    mockDiceSeq(die(1), die(1));
     const { state: after } = rollDice(state, 'alice');
     const alice = after.players.find(p => p.id === 'alice')!;
-    expect(alice.money).toBe(moneybefore - 500);
+    expect(alice.position).toBe(4);
+    expect(alice.money).toBe(moneyBefore - 500);
+  });
+
+  it('deducts 2000 DHS when player rolls onto Oil Revenue Tax space', () => {
+    let state = makeTwoPlayerGame();
+    // Position alice at 36, roll [1,1] = 2 → lands on space 38 (Oil Revenue Tax)
+    state = {
+      ...state,
+      players: state.players.map(p => p.id === 'alice' ? { ...p, position: 36 } : p),
+    };
+    const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
+    mockDiceSeq(die(1), die(1));
+    const { state: after } = rollDice(state, 'alice');
+    const alice = after.players.find(p => p.id === 'alice')!;
+    expect(alice.position).toBe(38);
+    expect(alice.money).toBe(moneyBefore - 2000);
   });
 });
 
@@ -167,40 +219,28 @@ describe('Bankruptcy clears properties from board', () => {
   it('sets ownerId to null on all bankrupt player properties', () => {
     let state = makeTwoPlayerGame();
 
-    // Give alice property at index 1 (Tunis, price 600)
+    // Give alice property at index 1 (Tunis)
     state = {
       ...state,
       players: state.players.map(p =>
-        p.id === 'alice' ? { ...p, properties: [1] } : p
+        p.id === 'alice' ? { ...p, properties: [1], money: 10 } : p
       ),
-      board: state.board.map((s, i) =>
-        i === 1 ? { ...s, ownerId: 'alice' } : s
-      ),
+      board: state.board.map((s, i) => i === 1 ? { ...s, ownerId: 'alice' } : s),
     };
 
-    // Drain alice's money to near-zero so next rent kills her
+    // Give bob Dubai (index 39) with base rent 500 DHS — enough to bankrupt alice
     state = {
       ...state,
-      players: state.players.map(p =>
-        p.id === 'alice' ? { ...p, money: 10 } : p
-      ),
-    };
-
-    // Give bob a property with high rent so alice pays it on landing
-    // Position alice at bob's property with high rent
-    const bobPropIdx = 39; // Dubai, rent 500 (base)
-    state = {
-      ...state,
-      board: state.board.map((s, i) => i === bobPropIdx ? { ...s, ownerId: 'bob' } : s),
+      board: state.board.map((s, i) => i === 39 ? { ...s, ownerId: 'bob' } : s),
       players: state.players.map(p => {
-        if (p.id === 'alice') return { ...p, position: 37 }; // 2 spaces before Dubai
-        if (p.id === 'bob') return { ...p, properties: [bobPropIdx] };
+        if (p.id === 'alice') return { ...p, position: 37 };
+        if (p.id === 'bob') return { ...p, properties: [39] };
         return p;
       }),
     };
 
-    // Roll [1,1] doubles → position 37+2=39 → Dubai → 500 rent → alice bankrupt
-    mockDice(1, 1);
+    // Roll [1,1] doubles → position 37+2=39 → Dubai → pay 500 rent → bankrupt
+    mockDiceSeq(die(1), die(1));
     const { state: after } = rollDice(state, 'alice');
 
     const alice = after.players.find(p => p.id === 'alice')!;
@@ -211,12 +251,11 @@ describe('Bankruptcy clears properties from board', () => {
   });
 });
 
-// ─── Bug 5: Pay-to-leave-jail ────────────────────────────────────────────────
+// ─── Bug 5: Pay-to-leave-jail (pure function) ────────────────────────────────
 
 describe('payJail function', () => {
   it('deducts 500 DHS and clears jail status', () => {
     let state = makeTwoPlayerGame();
-    // Put alice in jail
     state = {
       ...state,
       players: state.players.map(p =>
@@ -234,28 +273,24 @@ describe('payJail function', () => {
     expect(alice.money).toBe(moneyBefore - 500);
   });
 
-  it('rejects pay-jail when player is not in jail', () => {
+  it('rejects when player is not in jail', () => {
     const state = makeTwoPlayerGame();
     const { error } = payJail(state, 'alice');
-    expect(error).toBeDefined();
-    expect(error).toContain('not in jail');
+    expect(error).toMatch(/not in jail/i);
   });
 
-  it('rejects pay-jail when player has already rolled', () => {
+  it('rejects when player has already rolled', () => {
     let state = makeTwoPlayerGame();
     state = {
       ...state,
       hasRolled: true,
-      players: state.players.map(p =>
-        p.id === 'alice' ? { ...p, inJail: true } : p
-      ),
+      players: state.players.map(p => p.id === 'alice' ? { ...p, inJail: true } : p),
     };
     const { error } = payJail(state, 'alice');
-    expect(error).toBeDefined();
-    expect(error).toContain('after rolling');
+    expect(error).toMatch(/after rolling/i);
   });
 
-  it('rejects pay-jail when player has insufficient funds', () => {
+  it('rejects when player has insufficient funds', () => {
     let state = makeTwoPlayerGame();
     state = {
       ...state,
@@ -264,7 +299,63 @@ describe('payJail function', () => {
       ),
     };
     const { error } = payJail(state, 'alice');
-    expect(error).toBeDefined();
-    expect(error).toContain('enough money');
+    expect(error).toMatch(/enough money/i);
+  });
+});
+
+// ─── Bug 5: POST /api/games/:id/pay-jail (HTTP endpoint) ─────────────────────
+
+describe('POST /api/games/:id/pay-jail endpoint', () => {
+  const GAME_ID = 'http-test-jail';
+
+  it('returns 200 and clears jail when called with valid jailed player', async () => {
+    let state = makeTwoPlayerGame(GAME_ID);
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice' ? { ...p, inJail: true, jailTurns: 0 } : p
+      ),
+    };
+    setGame(GAME_ID, state);
+
+    const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
+    const res = await request(app)
+      .post(`/api/games/${GAME_ID}/pay-jail`)
+      .send({ playerId: 'alice' });
+
+    expect(res.status).toBe(200);
+    const alice = res.body.players.find((p: any) => p.id === 'alice');
+    expect(alice.inJail).toBe(false);
+    expect(alice.money).toBe(moneyBefore - 500);
+  });
+
+  it('returns 404 when game does not exist', async () => {
+    const res = await request(app)
+      .post('/api/games/NONEXISTENT/pay-jail')
+      .send({ playerId: 'alice' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when player is not in jail', async () => {
+    const STATE_ID = 'http-test-no-jail';
+    const state = makeTwoPlayerGame(STATE_ID);
+    setGame(STATE_ID, state);
+
+    const res = await request(app)
+      .post(`/api/games/${STATE_ID}/pay-jail`)
+      .send({ playerId: 'alice' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not in jail/i);
+  });
+
+  it('returns 400 when playerId is missing', async () => {
+    const STATE_ID = 'http-test-missing-player';
+    const state = makeTwoPlayerGame(STATE_ID);
+    setGame(STATE_ID, state);
+
+    const res = await request(app)
+      .post(`/api/games/${STATE_ID}/pay-jail`)
+      .send({});
+    expect(res.status).toBe(400);
   });
 });
