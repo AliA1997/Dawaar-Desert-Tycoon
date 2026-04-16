@@ -79,6 +79,13 @@ export function getTokenImage(tokenId: string): any {
 export const NPC_NAMES = ['Khalid', 'Tariq', 'Omar', 'Layla', 'Zaid'];
 export const NPC_TOKENS = ['falcon', 'dhow', 'palm', 'crescent', 'lamp'];
 
+export interface SavedGame {
+  gameId: string;
+  isSinglePlayer: boolean;
+  npcPlayerIds: string[];
+  myPlayerId: string;
+}
+
 interface GameContextType {
   gameState: GameState | null;
   myPlayerId: string | null;
@@ -90,15 +97,19 @@ interface GameContextType {
   isSinglePlayer: boolean;
   npcPlayerIds: string[];
   npcThinking: boolean;
+  savedGame: SavedGame | null;
   createGame: (name: string, token: string) => Promise<string | null>;
   createSinglePlayerGame: (name: string, token: string, npcCount: number) => Promise<boolean>;
   joinGame: (gameId: string, name: string, token: string) => Promise<boolean>;
+  resumeGame: () => Promise<boolean>;
   startGame: () => Promise<void>;
   rollDice: () => Promise<{ dice: number[]; isDoubles: boolean } | null>;
   buyProperty: () => Promise<void>;
   endTurn: () => Promise<void>;
   payJail: () => Promise<void>;
   buildHouse: (propertyIndex: number) => Promise<void>;
+  sellHouse: (propertyIndex: number) => Promise<void>;
+  auctionBuy: (propertyIndex: number, winnerId: string, price: number) => Promise<void>;
   mortgageProperty: (propertyIndex: number, action: 'mortgage' | 'unmortgage') => Promise<void>;
   proposeTrade: (toPlayerId: string, offeredProps: number[], requestedProps: number[], offeredMoney: number, requestedMoney: number) => Promise<void>;
   acceptTrade: () => Promise<void>;
@@ -122,18 +133,28 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [isSinglePlayer, setIsSinglePlayer] = useState(false);
   const [npcPlayerIds, setNpcPlayerIds] = useState<string[]>([]);
   const [npcThinking, setNpcThinking] = useState(false);
+  const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingActiveRef = useRef(false);
   const npcBotRunningRef = useRef(false);
 
-  // Load saved player data
+  const GAME_SAVE_KEY = '@dawaar_saved_game';
+
+  // Load saved player data and any in-progress game
   useEffect(() => {
-    AsyncStorage.multiGet(['dawaar_playerId', 'dawaar_playerName']).then(values => {
+    AsyncStorage.multiGet(['dawaar_playerId', 'dawaar_playerName', GAME_SAVE_KEY]).then(values => {
       const id = values[0][1];
       const name = values[1][1];
+      const savedJson = values[2][1];
       if (id) setMyPlayerId(id);
       if (name) setMyPlayerName(name);
+      if (savedJson) {
+        try {
+          const parsed: SavedGame = JSON.parse(savedJson);
+          setSavedGame(parsed);
+        } catch { /* ignore corrupt data */ }
+      }
     });
   }, []);
 
@@ -432,6 +453,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setNpcPlayerIds(npcIds);
       npcBotRunningRef.current = false;
       attachToGame(fullState);
+
+      // 5. Persist game so the player can resume after closing the app
+      const save: SavedGame = { gameId, isSinglePlayer: true, npcPlayerIds: npcIds, myPlayerId: playerId! };
+      setSavedGame(save);
+      await AsyncStorage.setItem(GAME_SAVE_KEY, JSON.stringify(save));
+
       return true;
     } catch (e: any) {
       setError(e.message);
@@ -595,7 +622,59 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [gameState, myPlayerId]);
 
+  const sellHouse = useCallback(async (propertyIndex: number) => {
+    if (!gameState || !myPlayerId) return;
+    setError(null);
+    try {
+      const state = await api(`/games/${gameState.gameId}/sell-house`, 'POST', { playerId: myPlayerId, propertyIndex });
+      setGameState(state);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [gameState, myPlayerId]);
+
+  const auctionBuy = useCallback(async (propertyIndex: number, winnerId: string, price: number) => {
+    if (!gameState) return;
+    setError(null);
+    try {
+      const state = await api(`/games/${gameState.gameId}/auction-buy`, 'POST', { winnerId, propertyIndex, price });
+      setGameState(state);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [gameState]);
+
+  const resumeGame = useCallback(async (): Promise<boolean> => {
+    if (!savedGame) return false;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const state: GameState = await api(`/games/${savedGame.gameId}`);
+      if (state.status === 'finished') {
+        setSavedGame(null);
+        await AsyncStorage.removeItem(GAME_SAVE_KEY);
+        return false;
+      }
+      setMyPlayerId(savedGame.myPlayerId);
+      setIsSinglePlayer(savedGame.isSinglePlayer);
+      setNpcPlayerIds(savedGame.npcPlayerIds);
+      npcBotRunningRef.current = false;
+      attachToGame(state);
+      return true;
+    } catch {
+      // Game no longer exists on server — clear saved game
+      setSavedGame(null);
+      AsyncStorage.removeItem(GAME_SAVE_KEY).catch(() => {});
+      setError('Saved game no longer available. Please start a new game.');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [savedGame, attachToGame]);
+
   const leaveGame = useCallback(() => {
+    AsyncStorage.removeItem(GAME_SAVE_KEY).catch(() => {});
+    setSavedGame(null);
     stopPolling();
     setGameState(null);
     setLastDiceRoll(null);
@@ -620,15 +699,19 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       isSinglePlayer,
       npcPlayerIds,
       npcThinking,
+      savedGame,
       createGame,
       createSinglePlayerGame,
       joinGame,
+      resumeGame,
       startGame,
       rollDice,
       buyProperty,
       endTurn,
       payJail,
       buildHouse,
+      sellHouse,
+      auctionBuy,
       mortgageProperty,
       proposeTrade,
       acceptTrade,

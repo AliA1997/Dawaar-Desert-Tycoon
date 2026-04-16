@@ -434,7 +434,9 @@ function applyCardAction(action: string, playerId: string, players: Player[], bo
 
 export function buyProperty(state: GameState, playerId: string): { state: GameState; error?: string } {
   if (state.currentPlayerId !== playerId) return { state, error: 'Not your turn' };
-  if (!state.hasRolled) return { state, error: 'Roll dice first' };
+  // Allow buying during doubles re-roll (doublesCount > 0 means player already moved)
+  const player0 = state.players.find(p => p.id === playerId);
+  if (!state.hasRolled && (!player0 || player0.doublesCount === 0)) return { state, error: 'Roll dice first' };
 
   const player = state.players.find(p => p.id === playerId)!;
   const space = state.board[player.position];
@@ -660,6 +662,7 @@ export function claimAdReward(state: GameState, playerId: string): { state: Game
   if (player.isBankrupt) return { state, error: 'Player is bankrupt' };
 
   const REWARD = 1500;
+
   return {
     state: {
       ...state,
@@ -674,6 +677,72 @@ export function claimAdReward(state: GameState, playerId: string): { state: Game
           timestamp: new Date().toISOString(),
           playerId,
         },
+      ].slice(-50),
+    },
+  };
+}
+
+export function sellHouse(state: GameState, playerId: string, propertyIndex: number): { state: GameState; error?: string } {
+  const player = state.players.find(p => p.id === playerId);
+  if (!player) return { state, error: 'Player not found' };
+
+  const space = state.board[propertyIndex];
+  if (!space) return { state, error: 'Invalid property' };
+  if (space.ownerId !== playerId) return { state, error: 'You do not own this property' };
+  if (!space.hotel && space.houses === 0) return { state, error: 'No buildings to sell' };
+
+  let newBoard: typeof state.board;
+  let refund: number;
+  let logMessage: string;
+
+  if (space.hotel) {
+    refund = Math.floor((space.hotelCost || 1000) / 2);
+    newBoard = state.board.map((s, i) => i === propertyIndex ? { ...s, hotel: false, houses: 4 } : s);
+    logMessage = `${player.name} sold the hotel on ${space.name} for ${refund.toLocaleString()} DHS`;
+  } else {
+    refund = Math.floor((space.houseCost || 1000) / 2);
+    newBoard = state.board.map((s, i) => i === propertyIndex ? { ...s, houses: s.houses - 1 } : s);
+    logMessage = `${player.name} sold a house on ${space.name} for ${refund.toLocaleString()} DHS`;
+  }
+
+  const newPlayers = state.players.map(p => p.id === playerId ? { ...p, money: p.money + refund } : p);
+  return {
+    state: {
+      ...state,
+      players: newPlayers,
+      board: newBoard,
+      version: state.version + 1,
+      log: [...state.log, { message: logMessage, timestamp: new Date().toISOString(), playerId }].slice(-50),
+    },
+  };
+}
+
+export function auctionBuy(state: GameState, winnerId: string, propertyIndex: number, price: number): { state: GameState; error?: string } {
+  const winner = state.players.find(p => p.id === winnerId);
+  if (!winner) return { state, error: 'Player not found' };
+  if (winner.isBankrupt) return { state, error: 'Bankrupt players cannot bid' };
+
+  const space = state.board[propertyIndex];
+  if (!space) return { state, error: 'Invalid property' };
+  if (space.ownerId) return { state, error: 'Property is already owned' };
+  if (!space.price) return { state, error: 'Property cannot be purchased' };
+  if (price < 1) return { state, error: 'Bid must be at least 1 DHS' };
+  if (winner.money < price) return { state, error: 'Not enough money' };
+
+  const newBoard = state.board.map((s, i) => i === propertyIndex ? { ...s, ownerId: winnerId } : s);
+  const newPlayers = state.players.map(p =>
+    p.id === winnerId ? { ...p, money: p.money - price, properties: [...p.properties, propertyIndex] } : p
+  );
+
+  return {
+    state: {
+      ...state,
+      players: newPlayers,
+      board: newBoard,
+      version: state.version + 1,
+      log: [
+        ...state.log,
+        { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId },
       ].slice(-50),
     },
   };

@@ -391,7 +391,7 @@ const boardStyles = StyleSheet.create({
 });
 
 function PropertyCard({ property, onClose }: { property: BoardProperty; onClose: () => void }) {
-  const { myPlayer, buyProperty, buildHouse, mortgageProperty, gameState, myPlayerId } = useGame();
+  const { myPlayer, buyProperty, buildHouse, sellHouse, mortgageProperty, gameState, myPlayerId } = useGame();
 
   if (!property) return null;
 
@@ -408,6 +408,11 @@ function PropertyCard({ property, onClose }: { property: BoardProperty; onClose:
   const handleBuild = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await buildHouse(property.index);
+  };
+
+  const handleSell = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await sellHouse(property.index);
   };
 
   const handleMortgage = async (action: 'mortgage' | 'unmortgage') => {
@@ -473,6 +478,14 @@ function PropertyCard({ property, onClose }: { property: BoardProperty; onClose:
               <TouchableOpacity style={propStyles.buildBtn} onPress={handleBuild}>
                 <Ionicons name="add" size={16} color={Colors.darkBg} />
                 <Text style={propStyles.buildBtnText}>{property.houses < 4 ? 'Build House' : 'Build Hotel'}</Text>
+              </TouchableOpacity>
+            )}
+            {(property.houses > 0 || property.hotel) && (
+              <TouchableOpacity style={propStyles.sellBtn} onPress={handleSell}>
+                <Ionicons name="remove" size={16} color="white" />
+                <Text style={propStyles.sellBtnText}>
+                  Sell {property.hotel ? 'Hotel' : 'House'} (+{Math.floor((property.hotel ? (property.hotelCost ?? 1000) : (property.houseCost ?? 1000)) / 2).toLocaleString()} DHS)
+                </Text>
               </TouchableOpacity>
             )}
             {!property.isMortgaged ? (
@@ -643,6 +656,20 @@ const propStyles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#9CA3AF',
   },
+  sellBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  sellBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
+  },
 });
 
 // ─── Landing-card helpers ──────────────────────────────────────────────────────
@@ -696,7 +723,7 @@ export default function GameScreen() {
   const insets = useSafeAreaInsets();
   const {
     gameState, myPlayerId, myPlayer, isMyTurn,
-    rollDice, buyProperty, buildHouse, endTurn, payJail, leaveGame,
+    rollDice, buyProperty, buildHouse, sellHouse, auctionBuy, endTurn, payJail, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
     claimAdReward,
@@ -715,6 +742,11 @@ export default function GameScreen() {
   const [lastCardText, setLastCardText] = useState<string | null>(null);
   const [lastCardType, setLastCardType] = useState<'chance' | 'community' | null>(null);
   const [showBuild, setShowBuild] = useState(false);
+  const [showAuction, setShowAuction] = useState(false);
+  const [humanBid, setHumanBid] = useState(0);
+  const [npcAuctionBids, setNpcAuctionBids] = useState<Array<{ id: string; name: string; color: string; bid: number }>>([]);
+  const [auctionPhase, setAuctionPhase] = useState<'bidding' | 'resolved'>('bidding');
+  const [auctionWinner, setAuctionWinner] = useState<{ id: string; name: string; bid: number } | null>(null);
   const [showAdModal, setShowAdModal] = useState(false);
   const [adCountdown, setAdCountdown] = useState(5);
   const [adWatched, setAdWatched] = useState(false);
@@ -869,7 +901,9 @@ export default function GameScreen() {
 
   const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
   const mySpace = myPlayer ? gameState.board[myPlayer.position] : null;
-  const canBuyCurrentSpace = isMyTurn && gameState.hasRolled && mySpace &&
+  // Allow buying even during doubles re-roll (doublesCount > 0 means player already moved this turn)
+  const hasMovedThisTurn = gameState.hasRolled || ((myPlayer?.doublesCount ?? 0) > 0);
+  const canBuyCurrentSpace = isMyTurn && hasMovedThisTurn && mySpace &&
     (mySpace.type === 'property' || mySpace.type === 'railroad' || mySpace.type === 'utility') &&
     !mySpace.ownerId && mySpace.price && myPlayer && myPlayer.money >= mySpace.price;
 
@@ -879,6 +913,11 @@ export default function GameScreen() {
     if (s.hotel) return false;
     return gameState.board.filter(b => b.colorGroup === s.colorGroup).every(b => b.ownerId === myPlayer.id);
   }) : [];
+
+  // Properties the current player owns that have buildings to sell
+  const myPropsWithBuildings = myPlayer ? gameState.board.filter(s =>
+    s.type === 'property' && s.ownerId === myPlayer.id && (s.houses > 0 || s.hotel)
+  ) : [];
 
   const handleRoll = async () => {
     if (!isMyTurn || gameState.hasRolled) return;
@@ -908,6 +947,52 @@ export default function GameScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await buyProperty();
   };
+
+  const handleAuction = () => {
+    if (!mySpace || !mySpace.price) return;
+    setHumanBid(Math.floor(mySpace.price * 0.5));
+    setNpcAuctionBids([]);
+    setAuctionPhase('bidding');
+    setAuctionWinner(null);
+    setShowAuction(true);
+  };
+
+  const handleSubmitBid = async () => {
+    if (!mySpace || !myPlayerId || !myPlayer) return;
+    const myBid = { id: myPlayerId, name: 'You', color: myPlayer.color, bid: humanBid };
+    const allBids = [...npcAuctionBids, myBid];
+    const winner = allBids.reduce((best, b) => b.bid > best.bid ? b : best, allBids[0]);
+    setAuctionWinner(winner);
+    setAuctionPhase('resolved');
+    await auctionBuy(mySpace.index, winner.id, winner.bid);
+    setTimeout(() => setShowAuction(false), 2500);
+  };
+
+  // Simulate NPC bids sequentially when auction opens
+  useEffect(() => {
+    if (!showAuction || !mySpace || !gameState || !mySpace.price) return;
+    setNpcAuctionBids([]);
+    const activeBots = gameState.players.filter(p =>
+      npcPlayerIds.includes(p.id) && !p.isBankrupt && p.money > 0
+    );
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    activeBots.forEach((bot, i) => {
+      const t = setTimeout(() => {
+        const maxBid = Math.min(
+          Math.floor((mySpace.price ?? 0) * 0.95),
+          Math.floor(bot.money * 0.35)
+        );
+        const groupBonus = mySpace.colorGroup
+          ? gameState.board.filter(s => s.colorGroup === mySpace.colorGroup && s.ownerId === bot.id).length * 0.15
+          : 0;
+        const bid = Math.max(0, Math.floor(maxBid * (1 + groupBonus) * (0.7 + Math.random() * 0.5)));
+        const finalBid = Math.min(bid, bot.money);
+        setNpcAuctionBids(prev => [...prev, { id: bot.id, name: bot.name, color: bot.color, bid: finalBid }]);
+      }, (i + 1) * 1400);
+      timers.push(t);
+    });
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [showAuction]);
 
   const handlePayJail = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1056,18 +1141,26 @@ export default function GameScreen() {
               </TouchableOpacity>
             )}
             {canBuyCurrentSpace && (
-              <TouchableOpacity style={gameStyles.buyBtn} onPress={handleBuy}>
-                <LinearGradient colors={['#22C55E', '#16A34A']} style={gameStyles.buyBtnGrad}>
-                  <Ionicons name="business" size={20} color="white" />
-                  <Text style={gameStyles.buyBtnText}>Buy {mySpace?.name}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+              <View style={gameStyles.buyRow}>
+                <TouchableOpacity style={[gameStyles.buyBtn, { flex: 1 }]} onPress={handleBuy}>
+                  <LinearGradient colors={['#22C55E', '#16A34A']} style={gameStyles.buyBtnGrad}>
+                    <Ionicons name="business" size={20} color="white" />
+                    <Text style={gameStyles.buyBtnText}>Buy {mySpace?.name}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                {isSinglePlayer && (
+                  <TouchableOpacity style={gameStyles.auctionBtn} onPress={handleAuction}>
+                    <Ionicons name="hammer" size={16} color={Colors.gold} />
+                    <Text style={gameStyles.auctionBtnText}>Auction</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
-            {isMyTurn && myBuildableProps.length > 0 && (
+            {isMyTurn && (myBuildableProps.length > 0 || myPropsWithBuildings.length > 0) && (
               <TouchableOpacity style={gameStyles.buildBtn} onPress={() => setShowBuild(true)}>
                 <View style={gameStyles.buildBtnInner}>
                   <Ionicons name="home" size={18} color="#22C55E" />
-                  <Text style={gameStyles.buildBtnText}>Build</Text>
+                  <Text style={gameStyles.buildBtnText}>Build / Sell</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -1124,29 +1217,39 @@ export default function GameScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Build Houses / Hotels Modal */}
+      {/* Build / Sell Modal */}
       <Modal visible={showBuild} transparent animationType="slide" onRequestClose={() => setShowBuild(false)}>
         <View style={gameStyles.logModalOverlay}>
           <View style={[gameStyles.logModal, { paddingBottom: botPad + 16 }]}>
             <View style={gameStyles.logHeader}>
-              <Text style={gameStyles.logTitle}>Build on Properties</Text>
+              <Text style={gameStyles.logTitle}>Build &amp; Sell Buildings</Text>
               <TouchableOpacity onPress={() => setShowBuild(false)}>
                 <Ionicons name="close" size={22} color={Colors.warmCream} />
               </TouchableOpacity>
             </View>
-            {myBuildableProps.length === 0 ? (
+            {myBuildableProps.length === 0 && myPropsWithBuildings.length === 0 ? (
               <Text style={gameStyles.buildEmptyText}>
                 Own all properties in a color group to build houses.
               </Text>
             ) : (
               <FlatList
-                data={myBuildableProps}
+                data={[
+                  ...myBuildableProps.map(p => ({ ...p, _mode: 'build' as const })),
+                  ...myPropsWithBuildings
+                    .filter(p => !myBuildableProps.some(b => b.index === p.index))
+                    .map(p => ({ ...p, _mode: 'sell' as const })),
+                ]}
                 keyExtractor={item => String(item.index)}
                 renderItem={({ item }) => {
                   const groupColor = item.colorGroup ? GROUP_COLORS[item.colorGroup] : '#888';
                   const nextCost = item.houses < 4 ? (item.houseCost ?? 1000) : (item.hotelCost ?? 1000);
                   const canAfford = (myPlayer?.money ?? 0) >= nextCost;
-                  const label = item.houses < 4 ? `House ${item.houses + 1}/4` : 'Hotel';
+                  const buildLabel = item.houses < 4 ? `House ${item.houses + 1}/4` : 'Hotel';
+                  const sellRefund = item.hotel
+                    ? Math.floor((item.hotelCost ?? 1000) / 2)
+                    : Math.floor((item.houseCost ?? 1000) / 2);
+                  const hasBuildable = item._mode === 'build' || myBuildableProps.some(b => b.index === item.index);
+                  const hasSellable = item.houses > 0 || item.hotel;
                   return (
                     <View style={gameStyles.buildRow}>
                       <View style={[gameStyles.buildColorDot, { backgroundColor: groupColor }]} />
@@ -1158,25 +1261,126 @@ export default function GameScreen() {
                           ))}
                           {item.hotel && <View style={gameStyles.pipHotel} />}
                         </View>
-                        <Text style={[gameStyles.buildCostText, !canAfford && { color: '#EF4444' }]}>
-                          {label} — {nextCost.toLocaleString()} DHS
-                        </Text>
+                        {hasBuildable && !item.hotel && (
+                          <Text style={[gameStyles.buildCostText, !canAfford && { color: '#EF4444' }]}>
+                            {buildLabel} — {nextCost.toLocaleString()} DHS
+                          </Text>
+                        )}
+                        {hasSellable && (
+                          <Text style={gameStyles.sellRefundText}>
+                            Sell → +{sellRefund.toLocaleString()} DHS
+                          </Text>
+                        )}
                       </View>
-                      <TouchableOpacity
-                        style={[gameStyles.buildConfirmBtn, !canAfford && { opacity: 0.4 }]}
-                        disabled={!canAfford}
-                        onPress={async () => {
-                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          await buildHouse(item.index);
-                        }}
-                      >
-                        <Ionicons name="add-circle" size={28} color="#22C55E" />
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {hasBuildable && !item.hotel && (
+                          <TouchableOpacity
+                            style={[gameStyles.buildConfirmBtn, !canAfford && { opacity: 0.4 }]}
+                            disabled={!canAfford}
+                            onPress={async () => {
+                              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              await buildHouse(item.index);
+                            }}
+                          >
+                            <Ionicons name="add-circle" size={28} color="#22C55E" />
+                          </TouchableOpacity>
+                        )}
+                        {hasSellable && (
+                          <TouchableOpacity
+                            style={gameStyles.sellConfirmBtn}
+                            onPress={async () => {
+                              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              await sellHouse(item.index);
+                            }}
+                          >
+                            <Ionicons name="remove-circle" size={28} color="#EF4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   );
                 }}
                 style={gameStyles.logList}
               />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Auction Modal */}
+      <Modal visible={showAuction} transparent animationType="slide" onRequestClose={() => setShowAuction(false)}>
+        <View style={gameStyles.logModalOverlay}>
+          <View style={[gameStyles.logModal, { paddingBottom: botPad + 16 }]}>
+            <View style={gameStyles.logHeader}>
+              <Text style={gameStyles.logTitle}>🏛️ Property Auction</Text>
+              <TouchableOpacity onPress={() => { setShowAuction(false); }}>
+                <Ionicons name="close" size={22} color={Colors.warmCream} />
+              </TouchableOpacity>
+            </View>
+
+            {mySpace && (
+              <View style={gameStyles.auctionPropertyBox}>
+                <View style={[gameStyles.auctionColorBar, { backgroundColor: mySpace.colorGroup ? GROUP_COLORS[mySpace.colorGroup] : Colors.gold }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={gameStyles.auctionPropName}>{mySpace.name}</Text>
+                  <Text style={gameStyles.auctionPropPrice}>Face value: {mySpace.price?.toLocaleString()} DHS</Text>
+                </View>
+              </View>
+            )}
+
+            <View style={gameStyles.auctionBidsList}>
+              {npcAuctionBids.map(bid => (
+                <View key={bid.id} style={gameStyles.auctionBidRow}>
+                  <View style={[gameStyles.auctionBidDot, { backgroundColor: bid.color }]} />
+                  <Text style={gameStyles.auctionBidName}>{bid.name}</Text>
+                  <Text style={gameStyles.auctionBidAmount}>
+                    {bid.bid > 0 ? `${bid.bid.toLocaleString()} DHS` : 'Passed'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {auctionPhase === 'bidding' ? (
+              <View style={gameStyles.auctionInputArea}>
+                <Text style={gameStyles.auctionInputLabel}>Your bid (DHS)</Text>
+                <View style={gameStyles.auctionInputRow}>
+                  <TouchableOpacity
+                    style={gameStyles.auctionStepBtn}
+                    onPress={() => setHumanBid(v => Math.max(0, v - 100))}
+                  >
+                    <Text style={gameStyles.auctionStepBtnText}>−100</Text>
+                  </TouchableOpacity>
+                  <Text style={gameStyles.auctionBidValue}>{humanBid.toLocaleString()}</Text>
+                  <TouchableOpacity
+                    style={gameStyles.auctionStepBtn}
+                    onPress={() => setHumanBid(v => Math.min(myPlayer?.money ?? 0, v + 100))}
+                  >
+                    <Text style={gameStyles.auctionStepBtnText}>+100</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={gameStyles.auctionSubmitBtn}
+                  onPress={handleSubmitBid}
+                  disabled={humanBid <= 0}
+                >
+                  <LinearGradient colors={[Colors.gold, '#A07830']} style={gameStyles.auctionSubmitGrad}>
+                    <Text style={gameStyles.auctionSubmitText}>
+                      {humanBid > 0 ? `Submit Bid — ${humanBid.toLocaleString()} DHS` : 'Pass (Enter a bid > 0)'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={gameStyles.auctionResultBox}>
+                {auctionWinner && (
+                  <>
+                    <Text style={gameStyles.auctionResultLabel}>
+                      {auctionWinner.id === myPlayerId ? '🏆 You won the auction!' : `${auctionWinner.name} won the auction!`}
+                    </Text>
+                    <Text style={gameStyles.auctionResultPrice}>{auctionWinner.bid.toLocaleString()} DHS</Text>
+                  </>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -1922,6 +2126,163 @@ const gameStyles = StyleSheet.create({
   },
   buildConfirmBtn: {
     padding: 4,
+  },
+  sellConfirmBtn: {
+    padding: 4,
+  },
+  sellRefundText: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#EF4444',
+    marginTop: 2,
+  },
+
+  /* ── Buy + Auction row ── */
+  buyRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'stretch',
+  },
+  auctionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(201,168,76,0.08)',
+  },
+  auctionBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+  },
+
+  /* ── Auction modal ── */
+  auctionPropertyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.darkBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  auctionColorBar: {
+    width: 6,
+    alignSelf: 'stretch',
+  },
+  auctionPropName: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+    padding: 12,
+  },
+  auctionPropPrice: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#9CA3AF',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  auctionBidsList: {
+    gap: 8,
+    marginBottom: 16,
+    minHeight: 30,
+  },
+  auctionBidRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: Colors.darkBg,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+  },
+  auctionBidDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  auctionBidName: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.warmCream,
+  },
+  auctionBidAmount: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+  },
+  auctionInputArea: {
+    gap: 10,
+  },
+  auctionInputLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: '#9CA3AF',
+  },
+  auctionInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  auctionStepBtn: {
+    backgroundColor: Colors.darkBg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  auctionStepBtnText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+  },
+  auctionBidValue: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+    minWidth: 100,
+    textAlign: 'center',
+  },
+  auctionSubmitBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  auctionSubmitGrad: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  auctionSubmitText: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.darkBg,
+  },
+  auctionResultBox: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  auctionResultLabel: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+    textAlign: 'center',
+  },
+  auctionResultPrice: {
+    fontSize: 28,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
   },
 
   /* ── Watch-Ad button (inline in action strip) ── */

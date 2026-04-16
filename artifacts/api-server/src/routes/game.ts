@@ -8,10 +8,12 @@ import {
   endTurn,
   payJail,
   buildHouse,
+  sellHouse,
   mortgageProperty,
   proposeTrade,
   acceptTrade,
   claimAdReward,
+  auctionBuy,
 } from '../game/gameState.js';
 import { getGame, setGame, generateGameId } from '../game/gameStore.js';
 
@@ -107,6 +109,30 @@ router.post('/:gameId/build', (req, res) => {
   const { playerId, propertyIndex } = req.body;
   if (!playerId || propertyIndex === undefined) return res.status(400).json({ error: 'playerId and propertyIndex are required' });
   const { state: newState, error } = buildHouse(state, playerId, propertyIndex);
+  if (error) return res.status(400).json({ error });
+  setGame(req.params.gameId, newState);
+  res.json(newState);
+});
+
+// POST /api/games/:gameId/sell-house
+router.post('/:gameId/sell-house', (req, res) => {
+  const state = getGame(req.params.gameId);
+  if (!state) return res.status(404).json({ error: 'Game not found' });
+  const { playerId, propertyIndex } = req.body;
+  if (!playerId || propertyIndex === undefined) return res.status(400).json({ error: 'playerId and propertyIndex are required' });
+  const { state: newState, error } = sellHouse(state, playerId, propertyIndex);
+  if (error) return res.status(400).json({ error });
+  setGame(req.params.gameId, newState);
+  res.json(newState);
+});
+
+// POST /api/games/:gameId/auction-buy
+router.post('/:gameId/auction-buy', (req, res) => {
+  const state = getGame(req.params.gameId);
+  if (!state) return res.status(404).json({ error: 'Game not found' });
+  const { winnerId, propertyIndex, price } = req.body;
+  if (!winnerId || propertyIndex === undefined || price === undefined) return res.status(400).json({ error: 'winnerId, propertyIndex, and price are required' });
+  const { state: newState, error } = auctionBuy(state, winnerId, propertyIndex, price);
   if (error) return res.status(400).json({ error });
   setGame(req.params.gameId, newState);
   res.json(newState);

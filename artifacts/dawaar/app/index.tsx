@@ -27,7 +27,7 @@ type Screen = 'mode' | 'singleplayer' | 'multiplayer';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { createGame, createSinglePlayerGame, joinGame, isLoading, error, clearError, myPlayerName } = useGame();
+  const { createGame, createSinglePlayerGame, joinGame, resumeGame, isLoading, error, clearError, myPlayerName, savedGame } = useGame();
   const { isSubscribed } = useSubscription();
   const [showSubscribe, setShowSubscribe] = useState(false);
 
@@ -39,6 +39,12 @@ export default function HomeScreen() {
   const [npcCount, setNpcCount] = useState(2);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
+
+  const handleResume = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const ok = await resumeGame();
+    if (ok) router.push('/game');
+  };
 
   const handleSinglePlayer = async () => {
     if (!playerName.trim()) {
@@ -109,6 +115,29 @@ export default function HomeScreen() {
           {/* Mode Selection */}
           {screen === 'mode' && (
             <View style={styles.modeContainer}>
+              {savedGame && (
+                <TouchableOpacity
+                  style={styles.resumeCard}
+                  onPress={handleResume}
+                  activeOpacity={0.85}
+                  disabled={isLoading}
+                >
+                  <LinearGradient
+                    colors={['rgba(201,168,76,0.2)', 'rgba(201,168,76,0.08)']}
+                    style={styles.resumeCardInner}
+                  >
+                    <View style={styles.resumeIconBg}>
+                      <Ionicons name="play-circle" size={28} color={Colors.gold} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resumeTitle}>Resume Game</Text>
+                      <Text style={styles.resumeDesc}>Continue your saved single-player game</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gold} />
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
                 style={styles.modeCard}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setScreen('singleplayer'); }}
@@ -393,6 +422,28 @@ const styles = StyleSheet.create({
 
   // Mode selection
   modeContainer: { gap: 14 },
+  resumeCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(201,168,76,0.4)',
+  },
+  resumeCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 14,
+  },
+  resumeIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(201,168,76,0.12)',
+  },
+  resumeTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', color: Colors.gold },
+  resumeDesc: { fontSize: 12, fontFamily: 'Inter_400Regular', color: '#9CA3AF', marginTop: 2 },
   modeCard: {
     borderRadius: 20,
     overflow: 'hidden',
