@@ -225,7 +225,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           // 1. Pause to simulate "thinking"
           await delay(1200 + Math.random() * 800);
 
-          // 2. Roll dice
+          // 2. If jailed and has sufficient funds, pay bail instead of gambling on doubles
+          const npcBeforeRoll = currentState.players.find(p => p.id === currentId);
+          if (npcBeforeRoll?.inJail && npcBeforeRoll.money > 1500) {
+            try {
+              const bailState = await api(`/games/${currentState.gameId}/pay-jail`, 'POST', { playerId: currentId });
+              currentState = bailState as GameState;
+              setGameState(currentState);
+              await delay(600);
+            } catch { /* can't pay — will roll for doubles instead */ }
+          }
+
+          // 3. Roll dice
           const rollData = await api(`/games/${currentState.gameId}/roll`, 'POST', { playerId: currentId });
           currentState = rollData.gameState as GameState;
           setGameState(currentState);
@@ -233,7 +244,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
           await delay(1000);
 
-          // 3. Decide whether to buy the landed property
+          // 4. Decide whether to buy the landed property (smarter reserve: 1500 DHS)
           const npcPlayer = currentState.players.find(p => p.id === currentId);
           if (npcPlayer) {
             const landedSpace = currentState.board[npcPlayer.position];
@@ -243,7 +254,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               !landedSpace.ownerId &&
               landedSpace.price != null &&
               npcPlayer.money >= landedSpace.price &&
-              npcPlayer.money - landedSpace.price > 2000;
+              npcPlayer.money - landedSpace.price >= 1500;
 
             if (canBuy) {
               await delay(700);
@@ -254,7 +265,29 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
-          // 4. If doubles were rolled and player is not in jail, loop for re-roll
+          // 5. Try to build a house if NPC owns a full color group and has reserve
+          const npcAfterBuy = currentState.players.find(p => p.id === currentId);
+          if (npcAfterBuy && !npcAfterBuy.inJail) {
+            const buildableProps = currentState.board.filter(s => {
+              if (s.type !== 'property' || !s.colorGroup || s.ownerId !== currentId || s.hotel) return false;
+              return currentState.board.filter(b => b.colorGroup === s.colorGroup).every(b => b.ownerId === currentId);
+            });
+            if (buildableProps.length > 0) {
+              const candidate = buildableProps.sort((a, b) => (a.houseCost ?? 0) - (b.houseCost ?? 0))[0];
+              const buildCost = candidate.houses < 4 ? (candidate.houseCost ?? 1000) : (candidate.hotelCost ?? 1000);
+              if (npcAfterBuy.money - buildCost >= 2000) {
+                try {
+                  await delay(700);
+                  const builtState = await api(`/games/${currentState.gameId}/build`, 'POST', { playerId: currentId, propertyIndex: candidate.index });
+                  currentState = builtState as GameState;
+                  setGameState(currentState);
+                  await delay(500);
+                } catch { /* not buildable this turn, ignore */ }
+              }
+            }
+          }
+
+          // 6. If doubles were rolled and player is not in jail, loop for re-roll
           const npcNow = currentState.players.find(p => p.id === currentId);
           if (rollData.isDoubles && npcNow && !npcNow.inJail && !currentState.hasRolled) {
             grantedReRoll = true;
@@ -262,7 +295,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           }
         } while (grantedReRoll);
 
-        // 5. End turn
+        // 7. Emergency mortgage: if very low on money, mortgage an unmortgaged property
+        const npcFinal = currentState.players.find(p => p.id === currentId);
+        if (npcFinal && npcFinal.money < 1000) {
+          const mortgageable = currentState.board.find(
+            s => s.ownerId === currentId && !s.isMortgaged && !s.houses && !s.hotel && s.mortgageValue
+          );
+          if (mortgageable) {
+            try {
+              const mortState = await api(`/games/${currentState.gameId}/mortgage`, 'POST', {
+                playerId: currentId,
+                propertyIndex: mortgageable.index,
+                action: 'mortgage',
+              });
+              currentState = mortState as GameState;
+              setGameState(currentState);
+              await delay(500);
+            } catch { /* ignore */ }
+          }
+        }
+
+        // 8. End turn
         await delay(800);
         const endState = await api(`/games/${currentState.gameId}/end-turn`, 'POST', { playerId: currentId });
         setGameState(endState as GameState);
@@ -286,6 +339,24 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     npcBotRunningRef.current = false;
   }, [gameState?.currentPlayerId]);
+
+  // Stall recovery: if NPC's turn shows hasRolled=true but bot isn't running, force end-turn
+  useEffect(() => {
+    if (!isSinglePlayer || !gameState || gameState.status !== 'playing') return;
+    const currentId = gameState.currentPlayerId;
+    if (!currentId || !npcPlayerIds.includes(currentId)) return;
+    if (!gameState.hasRolled || npcBotRunningRef.current) return;
+
+    const stallTimer = setTimeout(async () => {
+      if (npcBotRunningRef.current) return;
+      try {
+        const endState = await api(`/games/${gameState.gameId}/end-turn`, 'POST', { playerId: currentId });
+        setGameState(endState as GameState);
+      } catch { /* ignore */ }
+    }, 3500);
+
+    return () => clearTimeout(stallTimer);
+  }, [isSinglePlayer, gameState?.currentPlayerId, gameState?.hasRolled, gameState?.status, gameState?.gameId]);
 
   // ─── API Actions ─────────────────────────────────────────────────────────────
 

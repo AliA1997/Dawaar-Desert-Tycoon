@@ -24,6 +24,8 @@ import Animated, {
   withSpring,
   withSequence,
   withTiming,
+  withRepeat,
+  withDelay,
   runOnJS,
 } from 'react-native-reanimated';
 
@@ -719,6 +721,7 @@ export default function GameScreen() {
   const [adClaiming, setAdClaiming] = useState(false);
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [showSubscribe, setShowSubscribe] = useState(false);
+  const [doublesGranted, setDoublesGranted] = useState(false);
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -834,6 +837,18 @@ export default function GameScreen() {
     if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
   }, []);
 
+  // Reset doublesGranted when the active player changes
+  useEffect(() => {
+    setDoublesGranted(false);
+  }, [gameState?.currentPlayerId]);
+
+  // Auto-dismiss error banner after 6 seconds
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(clearError, 6000);
+    return () => clearTimeout(t);
+  }, [error, clearError]);
+
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
@@ -869,8 +884,11 @@ export default function GameScreen() {
     if (!isMyTurn || gameState.hasRolled) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setDiceAnimating(true);
-    await rollDice();
+    const result = await rollDice();
     setDiceAnimating(false);
+    if (result?.isDoubles) {
+      setDoublesGranted(true);
+    }
   };
 
   const handleEndTurn = async () => {
@@ -987,7 +1005,12 @@ export default function GameScreen() {
             </View>
             <View>
               <Text style={gameStyles.myMoney}>{myPlayer.money.toLocaleString()} DHS</Text>
-              {mySpace && <Text style={gameStyles.myPosition}>{mySpace.name}</Text>}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                {mySpace && <Text style={gameStyles.myPosition}>{mySpace.name}</Text>}
+                {myPlayer.inJail && (
+                  <Text style={gameStyles.jailBadge}>🔒 In Jail</Text>
+                )}
+              </View>
             </View>
           </View>
           {lastDiceRoll && (
@@ -1002,6 +1025,14 @@ export default function GameScreen() {
           <Ionicons name="alert-circle" size={14} color="#EF4444" />
           <Text style={gameStyles.errorText}>{error}</Text>
         </TouchableOpacity>
+      )}
+
+      {/* Doubles toast — slides in when player earns a re-roll */}
+      {doublesGranted && !gameState.hasRolled && isMyTurn && (
+        <View style={gameStyles.doublesToast}>
+          <Ionicons name="sparkles" size={15} color={Colors.gold} />
+          <Text style={gameStyles.doublesToastText}>You rolled doubles! Roll again!</Text>
+        </View>
       )}
 
       {/* Actions Panel */}
@@ -1059,11 +1090,7 @@ export default function GameScreen() {
           <View style={gameStyles.waitingPanel}>
             {isSinglePlayer && npcThinking ? (
               <View style={gameStyles.botThinkingRow}>
-                <View style={gameStyles.botDots}>
-                  <View style={gameStyles.botDot} />
-                  <View style={[gameStyles.botDot, gameStyles.botDotMid]} />
-                  <View style={gameStyles.botDot} />
-                </View>
+                <BotThinkingDots />
                 <Text style={gameStyles.botThinkingText}>
                   {currentPlayer?.name} is thinking...
                 </Text>
@@ -2164,4 +2191,71 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: 'rgba(255,255,255,0.35)',
   },
+
+  /* ── Doubles toast ── */
+  doublesToast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 12,
+    marginTop: 6,
+    backgroundColor: 'rgba(201,168,76,0.12)',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.gold + '44',
+  },
+  doublesToastText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.gold,
+  },
+
+  /* ── Jail badge in status bar ── */
+  jailBadge: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#EF4444',
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
 });
+
+// ── Animated bot thinking dots ────────────────────────────────────────────────
+function BotThinkingDots() {
+  const d1 = useSharedValue(0.3);
+  const d2 = useSharedValue(0.3);
+  const d3 = useSharedValue(0.3);
+
+  useEffect(() => {
+    const makeLoop = (delayMs: number) =>
+      withDelay(
+        delayMs,
+        withRepeat(
+          withSequence(
+            withTiming(1, { duration: 360 }),
+            withTiming(0.2, { duration: 360 }),
+          ),
+          -1,
+          false,
+        ),
+      );
+    d1.value = makeLoop(0);
+    d2.value = makeLoop(180);
+    d3.value = makeLoop(360);
+  }, []);
+
+  const s1 = useAnimatedStyle(() => ({ opacity: d1.value }));
+  const s2 = useAnimatedStyle(() => ({ opacity: d2.value }));
+  const s3 = useAnimatedStyle(() => ({ opacity: d3.value }));
+
+  return (
+    <View style={gameStyles.botDots}>
+      <Animated.View style={[gameStyles.botDot, s1]} />
+      <Animated.View style={[gameStyles.botDot, gameStyles.botDotMid, s2]} />
+      <Animated.View style={[gameStyles.botDot, s3]} />
+    </View>
+  );
+}

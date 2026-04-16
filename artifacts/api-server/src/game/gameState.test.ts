@@ -8,6 +8,9 @@ import {
   rollDice,
   endTurn,
   payJail,
+  buildHouse,
+  mortgageProperty,
+  buyProperty,
 } from './gameState.js';
 import { setGame } from './gameStore.js';
 import { BOARD, CHANCE_CARDS } from './board.js';
@@ -300,6 +303,269 @@ describe('payJail function', () => {
     };
     const { error } = payJail(state, 'alice');
     expect(error).toMatch(/enough money/i);
+  });
+});
+
+// ─── NPC building strategy ────────────────────────────────────────────────────
+
+describe('NPC building strategy (buildHouse)', () => {
+  it('allows building a house when player owns all properties in a color group', () => {
+    let state = makeTwoPlayerGame();
+    // Give alice the first complete color group
+    const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
+    expect(firstGroup).toBeDefined();
+    const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
+    expect(groupProps.length).toBeGreaterThanOrEqual(2);
+
+    // Give alice money and ownership of the entire group
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice'
+          ? { ...p, money: 10000, properties: groupProps.map(s => s.index) }
+          : p
+      ),
+      board: state.board.map(s =>
+        s.colorGroup === firstGroup ? { ...s, ownerId: 'alice' } : s
+      ),
+      hasRolled: true,
+    };
+
+    const target = state.board.find(s => s.colorGroup === firstGroup)!;
+    const { state: built, error } = buildHouse(state, 'alice', target.index);
+    expect(error).toBeUndefined();
+    expect(built.board[target.index].houses).toBe(1);
+  });
+
+  it('prevents building when player does not own the full color group', () => {
+    let state = makeTwoPlayerGame();
+    const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
+    const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
+
+    // Alice owns only the first property in the group (not all)
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice'
+          ? { ...p, money: 10000, properties: [groupProps[0].index] }
+          : p
+      ),
+      board: state.board.map((s, i) =>
+        i === groupProps[0].index ? { ...s, ownerId: 'alice' } : s
+      ),
+      hasRolled: true,
+    };
+
+    const { error } = buildHouse(state, 'alice', groupProps[0].index);
+    expect(error).toBeDefined();
+    expect(error).toMatch(/own all|all properties/i);
+  });
+
+  it('allows building up to a hotel (4 houses → hotel)', () => {
+    let state = makeTwoPlayerGame();
+    const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
+    const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
+
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice' ? { ...p, money: 99000, properties: groupProps.map(s => s.index) } : p
+      ),
+      board: state.board.map(s =>
+        s.colorGroup === firstGroup ? { ...s, ownerId: 'alice' } : s
+      ),
+      hasRolled: true,
+    };
+
+    const target = state.board.find(s => s.colorGroup === firstGroup)!;
+    // Build 4 houses then a hotel
+    let s = state;
+    for (let i = 0; i < 4; i++) {
+      const result = buildHouse(s, 'alice', target.index);
+      expect(result.error).toBeUndefined();
+      s = result.state;
+    }
+    expect(s.board[target.index].houses).toBe(4);
+
+    const hotelResult = buildHouse(s, 'alice', target.index);
+    expect(hotelResult.error).toBeUndefined();
+    expect(hotelResult.state.board[target.index].hotel).toBe(true);
+    expect(hotelResult.state.board[target.index].houses).toBe(0);
+  });
+});
+
+// ─── NPC mortgage recovery strategy ──────────────────────────────────────────
+
+describe('NPC mortgage recovery (mortgageProperty)', () => {
+  it('allows mortgaging an owned property to raise emergency funds', () => {
+    let state = makeTwoPlayerGame();
+    const firstProp = BOARD.find(s => s.type === 'property' && s.mortgageValue);
+    expect(firstProp).toBeDefined();
+
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice'
+          ? { ...p, money: 500, properties: [firstProp!.index] }
+          : p
+      ),
+      board: state.board.map(s =>
+        s.index === firstProp!.index ? { ...s, ownerId: 'alice' } : s
+      ),
+      hasRolled: true,
+    };
+
+    const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
+    const { state: after, error } = mortgageProperty(state, 'alice', firstProp!.index, 'mortgage');
+    expect(error).toBeUndefined();
+    expect(after.board[firstProp!.index].isMortgaged).toBe(true);
+    expect(after.players.find(p => p.id === 'alice')!.money).toBe(moneyBefore + firstProp!.mortgageValue!);
+  });
+
+  it('allows unmortgaging a previously mortgaged property', () => {
+    let state = makeTwoPlayerGame();
+    const firstProp = BOARD.find(s => s.type === 'property' && s.mortgageValue);
+    const mortgageVal = firstProp!.mortgageValue!;
+
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice'
+          ? { ...p, money: 10000, properties: [firstProp!.index] }
+          : p
+      ),
+      board: state.board.map(s =>
+        s.index === firstProp!.index ? { ...s, ownerId: 'alice', isMortgaged: true } : s
+      ),
+      hasRolled: true,
+    };
+
+    const { state: after, error } = mortgageProperty(state, 'alice', firstProp!.index, 'unmortgage');
+    expect(error).toBeUndefined();
+    expect(after.board[firstProp!.index].isMortgaged).toBe(false);
+    expect(after.players.find(p => p.id === 'alice')!.money).toBeLessThan(10000);
+    // Unmortgage cost should be mortgageValue * 1.1
+    expect(after.players.find(p => p.id === 'alice')!.money).toBe(10000 - Math.floor(mortgageVal * 1.1));
+  });
+
+  it('prevents mortgaging a property with houses on it', () => {
+    let state = makeTwoPlayerGame();
+    const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
+    const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
+    const target = groupProps[0];
+
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice' ? { ...p, money: 10000, properties: groupProps.map(s => s.index) } : p
+      ),
+      board: state.board.map(s =>
+        s.colorGroup === firstGroup
+          ? { ...s, ownerId: 'alice', houses: s.index === target.index ? 1 : 0 }
+          : s
+      ),
+      hasRolled: true,
+    };
+
+    const { error } = mortgageProperty(state, 'alice', target.index, 'mortgage');
+    expect(error).toBeDefined();
+    expect(error).toMatch(/sell|building/i);
+  });
+});
+
+// ─── NPC stall recovery (endTurn with hasRolled=true) ─────────────────────────
+
+describe('NPC stall recovery (endTurn after hasRolled=true)', () => {
+  it('endTurn succeeds and advances turn when hasRolled is true', () => {
+    let state = makeTwoPlayerGame();
+    mockDiceSeq(die(2), die(5));
+    ({ state } = rollDice(state, 'alice'));
+    expect(state.hasRolled).toBe(true);
+
+    const { state: after, error } = endTurn(state, 'alice');
+    expect(error).toBeUndefined();
+    expect(after.currentPlayerId).toBe('bob');
+    expect(after.hasRolled).toBe(false);
+  });
+});
+
+// ─── POST /api/games/:id/build (HTTP endpoint) ────────────────────────────────
+
+describe('POST /api/games/:id/build endpoint', () => {
+  const GAME_ID = 'http-test-build';
+
+  it('returns 200 and increments house count when player owns full color group', async () => {
+    let state = makeTwoPlayerGame(GAME_ID);
+    const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup!;
+    const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
+    const target = groupProps[0];
+
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice' ? { ...p, money: 10000, properties: groupProps.map(s => s.index) } : p
+      ),
+      board: state.board.map(s =>
+        s.colorGroup === firstGroup ? { ...s, ownerId: 'alice' } : s
+      ),
+      hasRolled: true,
+    };
+    setGame(GAME_ID, state);
+
+    const res = await request(app)
+      .post(`/api/games/${GAME_ID}/build`)
+      .send({ playerId: 'alice', propertyIndex: target.index });
+
+    expect(res.status).toBe(200);
+    const builtProp = (res.body.board as { index: number; houses: number }[]).find(s => s.index === target.index);
+    expect(builtProp).toBeDefined();
+    expect(builtProp!.houses).toBe(1);
+  });
+
+  it('returns 404 when game does not exist', async () => {
+    const res = await request(app)
+      .post('/api/games/NONEXISTENT-BUILD/build')
+      .send({ playerId: 'alice', propertyIndex: 1 });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── POST /api/games/:id/mortgage (HTTP endpoint) ────────────────────────────
+
+describe('POST /api/games/:id/mortgage endpoint', () => {
+  const GAME_ID = 'http-test-mortgage';
+
+  it('returns 200 and mortgages the property', async () => {
+    let state = makeTwoPlayerGame(GAME_ID);
+    const firstProp = BOARD.find(s => s.type === 'property' && s.mortgageValue)!;
+
+    state = {
+      ...state,
+      players: state.players.map(p =>
+        p.id === 'alice' ? { ...p, money: 500, properties: [firstProp.index] } : p
+      ),
+      board: state.board.map(s =>
+        s.index === firstProp.index ? { ...s, ownerId: 'alice' } : s
+      ),
+      hasRolled: true,
+    };
+    setGame(GAME_ID, state);
+
+    const res = await request(app)
+      .post(`/api/games/${GAME_ID}/mortgage`)
+      .send({ playerId: 'alice', propertyIndex: firstProp.index, action: 'mortgage' });
+
+    expect(res.status).toBe(200);
+    const prop = (res.body.board as { index: number; isMortgaged: boolean }[]).find(s => s.index === firstProp.index);
+    expect(prop).toBeDefined();
+    expect(prop!.isMortgaged).toBe(true);
+  });
+
+  it('returns 404 when game does not exist', async () => {
+    const res = await request(app)
+      .post('/api/games/NONEXISTENT-MORTGAGE/mortgage')
+      .send({ playerId: 'alice', propertyIndex: 1, action: 'mortgage' });
+    expect(res.status).toBe(404);
   });
 });
 
