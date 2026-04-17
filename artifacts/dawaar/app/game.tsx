@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -87,13 +87,14 @@ const diceStyles = StyleSheet.create({
 
 type CellOrientation = 'bottom' | 'top' | 'left' | 'right' | 'corner';
 
-function BoardCell({
+const BoardCell = memo(function BoardCell({
   space,
   players,
   w,
   h,
   orientation = 'bottom',
   isHighlighted = false,
+  onLongPress,
 }: {
   space: BoardProperty;
   players: Player[];
@@ -101,6 +102,7 @@ function BoardCell({
   h: number;
   orientation?: CellOrientation;
   isHighlighted?: boolean;
+  onLongPress?: () => void;
 }) {
   const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
   const ownerPlayer = space.ownerId ? players.find(p => p.id === space.ownerId) : null;
@@ -135,7 +137,12 @@ function BoardCell({
     : '#07101D';
 
   return (
-    <View style={[cellStyles.cell, { width: w, height: h, backgroundColor: cellBg }]}>
+    <TouchableOpacity
+      activeOpacity={onLongPress ? 0.75 : 1}
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      style={[cellStyles.cell, { width: w, height: h, backgroundColor: cellBg }]}
+    >
       {/* Property color band — outer edge */}
       {groupColor && (
         <View style={[cellStyles.colorBar, barEdge, { backgroundColor: groupColor }]} />
@@ -188,9 +195,9 @@ function BoardCell({
 
       {/* Movement highlight overlay */}
       {isHighlighted && <View style={cellStyles.highlightOverlay} />}
-    </View>
+    </TouchableOpacity>
   );
-}
+});
 
 const cellStyles = StyleSheet.create({
   cell: {
@@ -283,13 +290,18 @@ const cellStyles = StyleSheet.create({
   },
 });
 
-function GameBoard({ board, players, highlightPos }: { board: BoardProperty[]; players: Player[]; highlightPos?: number | null }) {
-  // Correctly: CS = short side, CS2 = long side (corner / outer strip)
-  // Board total = CS2 + 9*CS + CS2 = BOARD_ACTUAL
-  const bottomRow = board.slice(0, 11);          // spaces 0-10, left→right
-  const rightCol  = [...board.slice(11, 20)].reverse(); // spaces 19→11, top→bottom
-  const topRow    = [...board.slice(20, 31)].reverse(); // spaces 30→20, left→right
-  const leftCol   = board.slice(31, 40);          // spaces 31-39, top→bottom
+const GameBoard = memo(function GameBoard({
+  board, players, highlightPos, onCellLongPress,
+}: {
+  board: BoardProperty[];
+  players: Player[];
+  highlightPos?: number | null;
+  onCellLongPress?: (space: BoardProperty) => void;
+}) {
+  const bottomRow = board.slice(0, 11);
+  const rightCol  = [...board.slice(11, 20)].reverse();
+  const topRow    = [...board.slice(20, 31)].reverse();
+  const leftCol   = board.slice(31, 40);
 
   return (
     <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
@@ -301,7 +313,7 @@ function GameBoard({ board, players, highlightPos }: { board: BoardProperty[]; p
         <LinearGradient colors={[Colors.gold + '18', 'transparent']} style={boardStyles.centerGlow} />
       </View>
 
-      {/* ── Bottom row: spaces 0-10 left→right, portrait cells (CS wide × CS2 tall) ── */}
+      {/* ── Bottom row ── */}
       <View style={[boardStyles.row, { bottom: 0, left: 0, height: CS2 }]}>
         {bottomRow.map((space, i) => {
           const isC = i === 0 || i === 10;
@@ -309,21 +321,23 @@ function GameBoard({ board, players, highlightPos }: { board: BoardProperty[]; p
             <BoardCell key={space.index} space={space} players={players}
               w={isC ? CS2 : CS} h={CS2}
               orientation={isC ? 'corner' : 'bottom'}
-              isHighlighted={highlightPos === space.index} />
+              isHighlighted={highlightPos === space.index}
+              onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
           );
         })}
       </View>
 
-      {/* ── Right column: spaces 19→11 top→bottom, landscape cells (CS2 wide × CS tall) ── */}
+      {/* ── Right column ── */}
       <View style={[boardStyles.col, { right: 0, top: CS2, width: CS2 }]}>
         {rightCol.map(space => (
           <BoardCell key={space.index} space={space} players={players}
             w={CS2} h={CS} orientation="right"
-            isHighlighted={highlightPos === space.index} />
+            isHighlighted={highlightPos === space.index}
+            onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
         ))}
       </View>
 
-      {/* ── Top row: spaces 30→20 left→right, portrait cells (CS wide × CS2 tall) ── */}
+      {/* ── Top row ── */}
       <View style={[boardStyles.row, { top: 0, left: 0, height: CS2 }]}>
         {topRow.map((space, i) => {
           const isC = i === 0 || i === 10;
@@ -331,22 +345,24 @@ function GameBoard({ board, players, highlightPos }: { board: BoardProperty[]; p
             <BoardCell key={space.index} space={space} players={players}
               w={isC ? CS2 : CS} h={CS2}
               orientation={isC ? 'corner' : 'top'}
-              isHighlighted={highlightPos === space.index} />
+              isHighlighted={highlightPos === space.index}
+              onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
           );
         })}
       </View>
 
-      {/* ── Left column: spaces 31-39 top→bottom, landscape cells (CS2 wide × CS tall) ── */}
+      {/* ── Left column ── */}
       <View style={[boardStyles.col, { left: 0, top: CS2, width: CS2 }]}>
         {leftCol.map(space => (
           <BoardCell key={space.index} space={space} players={players}
             w={CS2} h={CS} orientation="left"
-            isHighlighted={highlightPos === space.index} />
+            isHighlighted={highlightPos === space.index}
+            onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
         ))}
       </View>
     </View>
   );
-}
+});
 
 const boardStyles = StyleSheet.create({
   board: {
@@ -426,8 +442,27 @@ function PropertyCard({ property, onClose }: { property: BoardProperty; onClose:
   return (
     <View style={propStyles.card}>
       <View style={[propStyles.header, { backgroundColor: groupColor }]}>
-        <Text style={propStyles.headerName}>{property.name}</Text>
-        <Text style={propStyles.headerNameAr}>{property.nameAr}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={propStyles.headerName}>{property.name}</Text>
+          <Text style={propStyles.headerNameAr}>{property.nameAr}</Text>
+          {/* House / hotel badge */}
+          {(property.houses > 0 || property.hotel) && (
+            <View style={propStyles.headerBuildRow}>
+              {property.hotel ? (
+                <View style={propStyles.headerHotelBadge}>
+                  <Text style={propStyles.headerBuildText}>🏨 Hotel</Text>
+                </View>
+              ) : (
+                <View style={propStyles.headerHouseBadge}>
+                  {Array.from({ length: property.houses }).map((_, i) => (
+                    <View key={i} style={propStyles.headerHousePip} />
+                  ))}
+                  <Text style={propStyles.headerBuildText}> {property.houses} House{property.houses > 1 ? 's' : ''}</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
         <TouchableOpacity onPress={onClose} style={propStyles.closeBtn}>
           <Ionicons name="close" size={20} color="white" />
         </TouchableOpacity>
@@ -516,6 +551,8 @@ const propStyles = StyleSheet.create({
     padding: 16,
     paddingTop: 20,
     paddingBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   headerName: {
     fontSize: 18,
@@ -529,15 +566,44 @@ const propStyles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
     width: 32,
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.3)',
     borderRadius: 16,
+    marginTop: 2,
+  },
+  headerBuildRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  headerHouseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 3,
+  },
+  headerHotelBadge: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  headerHousePip: {
+    width: 8,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: '#22C55E',
+  },
+  headerBuildText: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
   },
   body: {
     padding: 16,
@@ -727,13 +793,17 @@ export default function GameScreen() {
     rollDice, buyProperty, buildHouse, sellHouse, auctionBuy, endTurn, payJail, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
-    claimAdReward, proposeTrade, acceptTrade,
+    claimAdReward, proposeTrade, acceptTrade, declineTrade, chooseTax,
   } = useGame();
 
   const [selectedProperty, setSelectedProperty] = useState<BoardProperty | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [showPlayers, setShowPlayers] = useState(false);
   const [diceAnimating, setDiceAnimating] = useState(false);
+  const [logFilter, setLogFilter] = useState<'all' | 'rent' | 'cards' | 'buildings' | 'trades'>('all');
+  const [showTaxModal, setShowTaxModal] = useState(false);
+  const [bankruptToast, setBankruptToast] = useState<string | null>(null);
+  const prevBankruptRef = useRef<Set<string>>(new Set());
 
   // Movement tracking
   const prevPositionsRef = useRef<Record<string, number>>({});
@@ -883,6 +953,29 @@ export default function GameScreen() {
     return () => clearTimeout(t);
   }, [error, clearError]);
 
+  // Detect newly bankrupt players
+  useEffect(() => {
+    if (!gameState) return;
+    gameState.players.forEach(p => {
+      if (p.isBankrupt && !prevBankruptRef.current.has(p.id)) {
+        prevBankruptRef.current.add(p.id);
+        const label = p.id === myPlayerId ? 'You are bankrupt!' : `${p.name} is bankrupt!`;
+        setBankruptToast(label);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setTimeout(() => setBankruptToast(null), 4000);
+      }
+    });
+  }, [gameState?.players.map(p => `${p.id}:${p.isBankrupt}`).join(',')]);
+
+  // Show tax choice modal when it's my turn to choose
+  useEffect(() => {
+    if (gameState?.pendingTaxChoice?.playerId === myPlayerId) {
+      setShowTaxModal(true);
+    } else {
+      setShowTaxModal(false);
+    }
+  }, [gameState?.pendingTaxChoice, myPlayerId]);
+
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
@@ -932,17 +1025,29 @@ export default function GameScreen() {
     }
   };
 
-  const handleEndTurn = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await endTurn();
-    if (!isSubscribed) {
-      turnCountRef.current += 1;
-      if (turnCountRef.current >= nextInterstitialRef.current) {
-        setShowInterstitial(true);
-        interstitialGapIdxRef.current = (interstitialGapIdxRef.current + 1) % INTERSTITIAL_GAPS.length;
-        nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current];
-      }
-    }
+  const handleEndTurn = () => {
+    Alert.alert(
+      'End Turn',
+      'Are you sure you want to end your turn?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Turn',
+          onPress: async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            await endTurn();
+            if (!isSubscribed) {
+              turnCountRef.current += 1;
+              if (turnCountRef.current >= nextInterstitialRef.current) {
+                setShowInterstitial(true);
+                interstitialGapIdxRef.current = (interstitialGapIdxRef.current + 1) % INTERSTITIAL_GAPS.length;
+                nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current];
+              }
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleBuy = async () => {
@@ -1043,7 +1148,17 @@ export default function GameScreen() {
 
       {/* Board */}
       <View style={gameStyles.boardContainer}>
-        <GameBoard board={gameState.board} players={gameState.players} highlightPos={highlightPos} />
+        <GameBoard
+          board={gameState.board}
+          players={gameState.players}
+          highlightPos={highlightPos}
+          onCellLongPress={(space) => {
+            if (space.type === 'property' || space.type === 'railroad' || space.type === 'utility') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSelectedProperty(space);
+            }
+          }}
+        />
       </View>
 
       {/* ── Landing card ── slides up over the status bar when a piece lands ── */}
@@ -1125,14 +1240,29 @@ export default function GameScreen() {
       {/* Actions Panel */}
       <View style={[gameStyles.actionsPanel, { paddingBottom: botPad + 8 }]}>
         {/* Pending trade banner — shows when someone proposes a trade to you */}
-        {!isSinglePlayer && gameState.pendingTrade && gameState.pendingTrade.toPlayerId === myPlayerId && (() => {
+        {gameState.pendingTrade && gameState.pendingTrade.toPlayerId === myPlayerId && (() => {
           const from = gameState.players.find(p => p.id === gameState.pendingTrade?.fromPlayerId);
+          const trade = gameState.pendingTrade;
           return (
             <View style={gameStyles.tradeBanner}>
               <Ionicons name="swap-horizontal" size={18} color={Colors.gold} />
-              <Text style={gameStyles.tradeBannerText} numberOfLines={1}>
-                {from?.name ?? 'Someone'} wants to trade with you!
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={gameStyles.tradeBannerText} numberOfLines={1}>
+                  {from?.name ?? 'Someone'} wants to trade!
+                </Text>
+                {trade.offeredMoney > 0 && (
+                  <Text style={gameStyles.tradeBannerSub}>
+                    Offers {trade.offeredMoney.toLocaleString()} DHS
+                    {trade.offeredPropertyIndices.length > 0 ? ` + ${trade.offeredPropertyIndices.length} prop(s)` : ''}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={gameStyles.tradeDeclineBtn}
+                onPress={async () => { try { await declineTrade(); } catch {} }}
+              >
+                <Text style={gameStyles.tradeDeclineText}>Decline</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={gameStyles.tradeAcceptBtn}
                 onPress={async () => { try { await acceptTrade(); } catch {} }}
@@ -1424,8 +1554,33 @@ export default function GameScreen() {
                 <Ionicons name="close" size={22} color={Colors.warmCream} />
               </TouchableOpacity>
             </View>
+            {/* Filter chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={gameStyles.logFilterRow} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}>
+              {(['all', 'rent', 'cards', 'buildings', 'trades'] as const).map(f => (
+                <TouchableOpacity
+                  key={f}
+                  style={[gameStyles.logChip, logFilter === f && gameStyles.logChipActive]}
+                  onPress={() => setLogFilter(f)}
+                >
+                  <Text style={[gameStyles.logChipText, logFilter === f && gameStyles.logChipTextActive]}>
+                    {f === 'all' ? 'All' : f === 'rent' ? 'Rent' : f === 'cards' ? 'Cards' : f === 'buildings' ? 'Buildings' : 'Trades'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             <FlatList
-              data={[...gameState.log].reverse()}
+              data={(() => {
+                const reversed = [...gameState.log].reverse();
+                if (logFilter === 'all') return reversed;
+                return reversed.filter(item => {
+                  const m = item.message.toLowerCase();
+                  if (logFilter === 'rent') return m.includes('rent') || m.includes('paid');
+                  if (logFilter === 'cards') return m.includes('chance') || m.includes('community') || m.includes('chest');
+                  if (logFilter === 'buildings') return m.includes('house') || m.includes('hotel') || m.includes('built') || m.includes('sold');
+                  if (logFilter === 'trades') return m.includes('trade') || m.includes('offer');
+                  return true;
+                });
+              })()}
               keyExtractor={(_, i) => String(i)}
               renderItem={({ item }) => (
                 <View style={gameStyles.logItem}>
@@ -1640,6 +1795,50 @@ export default function GameScreen() {
           board={gameState.board}
           onPropose={proposeTrade}
         />
+      )}
+
+      {/* ─── Tax Choice Modal ─────────────────────────────────────────────── */}
+      <Modal visible={showTaxModal} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={gameStyles.taxModalOverlay}>
+          <View style={gameStyles.taxModal}>
+            <Ionicons name="cash" size={36} color={Colors.gold} style={{ marginBottom: 8 }} />
+            <Text style={gameStyles.taxModalTitle}>Tax Time!</Text>
+            {gameState.pendingTaxChoice && (
+              <>
+                <Text style={gameStyles.taxModalSub}>Choose how to pay your tax:</Text>
+                <View style={gameStyles.taxChoiceRow}>
+                  <TouchableOpacity
+                    style={gameStyles.taxFlatBtn}
+                    onPress={async () => { await chooseTax('flat'); setShowTaxModal(false); }}
+                  >
+                    <Text style={gameStyles.taxFlatAmount}>{gameState.pendingTaxChoice.flat.toLocaleString()} DHS</Text>
+                    <Text style={gameStyles.taxFlatLabel}>Flat Tax</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={gameStyles.taxPercentBtn}
+                    onPress={async () => { await chooseTax('percent'); setShowTaxModal(false); }}
+                  >
+                    <Text style={gameStyles.taxFlatAmount}>{gameState.pendingTaxChoice.percent.toLocaleString()} DHS</Text>
+                    <Text style={gameStyles.taxFlatLabel}>10% of Net Worth</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={gameStyles.taxModalTip}>
+                  {gameState.pendingTaxChoice.flat <= gameState.pendingTaxChoice.percent
+                    ? '💡 Flat tax is cheaper for you'
+                    : '💡 Net worth tax is cheaper for you'}
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Bankruptcy Toast ─────────────────────────────────────────────── */}
+      {bankruptToast && (
+        <View style={gameStyles.bankruptToast} pointerEvents="none">
+          <Ionicons name="skull" size={18} color="#EF4444" />
+          <Text style={gameStyles.bankruptToastText}>{bankruptToast}</Text>
+        </View>
       )}
 
     </View>
@@ -2123,10 +2322,28 @@ const gameStyles = StyleSheet.create({
     gap: 8,
   },
   tradeBannerText: {
-    flex: 1,
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     color: Colors.warmCream,
+  },
+  tradeBannerSub: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.gold,
+    marginTop: 2,
+  },
+  tradeDeclineBtn: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#EF4444' + '44',
+  },
+  tradeDeclineText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#EF4444',
   },
   tradeAcceptBtn: {
     backgroundColor: Colors.gold,
@@ -2650,6 +2867,125 @@ const gameStyles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+  },
+
+  /* ── Log filter chips ── */
+  logFilterRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderColor,
+  },
+  logChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: Colors.darkBg,
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+  },
+  logChipActive: {
+    backgroundColor: Colors.gold + '22',
+    borderColor: Colors.gold + '88',
+  },
+  logChipText: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#9CA3AF',
+  },
+  logChipTextActive: {
+    color: Colors.gold,
+    fontFamily: 'Inter_700Bold',
+  },
+
+  /* ── Tax choice modal ── */
+  taxModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  taxModal: {
+    backgroundColor: Colors.cardBg,
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: Colors.gold + '44',
+  },
+  taxModalTitle: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+  },
+  taxModalSub: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.warmCream,
+    textAlign: 'center',
+  },
+  taxChoiceRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  taxFlatBtn: {
+    flex: 1,
+    backgroundColor: Colors.darkBg,
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gold + '55',
+  },
+  taxPercentBtn: {
+    flex: 1,
+    backgroundColor: Colors.darkBg,
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#A78BFA44',
+  },
+  taxFlatAmount: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+    marginBottom: 4,
+  },
+  taxFlatLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    color: '#9CA3AF',
+  },
+  taxModalTip: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#22C55E',
+    textAlign: 'center',
+  },
+
+  /* ── Bankruptcy toast ── */
+  bankruptToast: {
+    position: 'absolute',
+    top: 120,
+    left: 24,
+    right: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#EF444488',
+  },
+  bankruptToastText: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#EF4444',
+    flex: 1,
   },
 });
 

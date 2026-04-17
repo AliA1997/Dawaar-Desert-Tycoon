@@ -49,6 +49,12 @@ export interface TradeOffer {
   requestedMoney: number;
 }
 
+export interface PendingTaxChoice {
+  playerId: string;
+  flat: number;
+  percent: number;
+}
+
 export interface GameState {
   gameId: string;
   status: GameStatus;
@@ -61,6 +67,8 @@ export interface GameState {
   log: GameLog[];
   winnerId: string | null;
   pendingTrade: TradeOffer | null;
+  freeParkingPool: number;
+  pendingTaxChoice: PendingTaxChoice | null;
 }
 
 const PLAYER_COLORS = ['#C0392B', '#2980B9', '#27AE60', '#8E44AD', '#F39C12', '#1ABC9C'];
@@ -112,6 +120,8 @@ export function createGame(gameId: string, playerName: string, playerId: string,
     log: [{ message: `${playerName} created the game`, timestamp: new Date().toISOString(), playerId }],
     winnerId: null,
     pendingTrade: null,
+    freeParkingPool: 0,
+    pendingTaxChoice: null,
   };
 }
 
@@ -177,6 +187,16 @@ function countUtilitiesOwned(state: GameState, ownerId: string): number {
   return state.board.filter(s => s.type === 'utility' && s.ownerId === ownerId).length;
 }
 
+function computeNetWorth(player: Player, board: BoardProperty[]): number {
+  return player.money + board
+    .filter(s => s.ownerId === player.id)
+    .reduce((sum, s) => {
+      const baseVal = s.isMortgaged ? (s.mortgageValue ?? 0) : (s.price ?? 0);
+      const buildVal = s.houses * Math.floor((s.houseCost ?? 0) / 2) + (s.hotel ? Math.floor((s.hotelCost ?? 0) / 2) : 0);
+      return sum + baseVal + buildVal;
+    }, 0);
+}
+
 function ownsColorGroup(state: GameState, ownerId: string, colorGroup: string): boolean {
   const groupSpaces = state.board.filter(s => s.colorGroup === colorGroup);
   return groupSpaces.every(s => s.ownerId === ownerId);
@@ -217,6 +237,12 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
   const logs: GameLog[] = [];
   let newPlayers = [...state.players];
   let newBoard = [...state.board];
+  let newFreeParkingPool = state.freeParkingPool;
+  let newPendingTaxChoice: PendingTaxChoice | null = null;
+
+  const CARD_FINE_AMOUNTS: Record<string, number> = {
+    pay_500: 500, pay_1000: 1000, pay_1500: 1500,
+  };
 
   // Handle jail
   if (player.inJail) {
@@ -232,7 +258,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
         logs.push({ message: `${player.name} is stuck in jail (turn ${jailTurns})`, timestamp: new Date().toISOString(), playerId });
         newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, jailTurns, doublesCount: 0 } : p);
         return {
-          state: { ...state, players: newPlayers, diceRoll: [d1, d2], hasRolled: true, version: state.version + 1, log: [...state.log, ...logs] },
+          state: { ...state, players: newPlayers, diceRoll: [d1, d2], hasRolled: true, version: state.version + 1, log: [...state.log, ...logs], freeParkingPool: newFreeParkingPool, pendingTaxChoice: null },
           dice: [d1, d2],
           isDoubles: false,
         };
@@ -260,19 +286,35 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 10, inJail: true, jailTurns: 0 } : p);
     logs.push({ message: `${player.name} is sent to jail!`, timestamp: new Date().toISOString() });
   } else if (landedSpace.type === 'tax') {
-    const tax = (BOARD[newPosition] as any).taxAmount ?? 0;
-    newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money - tax } : p);
-    logs.push({ message: `${player.name} paid ${tax} DHS tax`, timestamp: new Date().toISOString() });
+    const flat = (BOARD[newPosition] as any).taxAmount ?? 0;
+    const currentPlayer = newPlayers.find(p => p.id === playerId)!;
+    const netWorth = computeNetWorth(currentPlayer, newBoard);
+    const percent = Math.floor(netWorth * 0.1);
+    newPendingTaxChoice = { playerId, flat, percent };
+    logs.push({ message: `${player.name} must choose: pay ${flat.toLocaleString()} DHS flat OR ${percent.toLocaleString()} DHS (10% net worth)`, timestamp: new Date().toISOString() });
+  } else if (landedSpace.type === 'free_parking') {
+    if (newFreeParkingPool > 0) {
+      const pool = newFreeParkingPool;
+      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + pool } : p);
+      newFreeParkingPool = 0;
+      logs.push({ message: `${player.name} landed on Free Parking and collected ${pool.toLocaleString()} DHS!`, timestamp: new Date().toISOString() });
+    } else {
+      logs.push({ message: `${player.name} landed on Free Parking — pool is empty`, timestamp: new Date().toISOString() });
+    }
   } else if (landedSpace.type === 'chance') {
     const card = CHANCE_CARDS[Math.floor(Math.random() * CHANCE_CARDS.length)];
     logs.push({ message: `CHANCE: ${card.text}`, timestamp: new Date().toISOString() });
     ({ newPlayers, newBoard } = applyCardAction(card.action, playerId, newPlayers, newBoard, state, total, logs));
     newPosition = newPlayers.find(p => p.id === playerId)!.position;
+    const cardFine = CARD_FINE_AMOUNTS[card.action];
+    if (cardFine) newFreeParkingPool += cardFine;
   } else if (landedSpace.type === 'community') {
     const card = COMMUNITY_CARDS[Math.floor(Math.random() * COMMUNITY_CARDS.length)];
     logs.push({ message: `COMMUNITY CHEST: ${card.text}`, timestamp: new Date().toISOString() });
     ({ newPlayers, newBoard } = applyCardAction(card.action, playerId, newPlayers, newBoard, state, total, logs));
     newPosition = newPlayers.find(p => p.id === playerId)!.position;
+    const cardFine = CARD_FINE_AMOUNTS[card.action];
+    if (cardFine) newFreeParkingPool += cardFine;
   } else if ((landedSpace.type === 'property' || landedSpace.type === 'railroad' || landedSpace.type === 'utility') && landedSpace.ownerId && landedSpace.ownerId !== playerId) {
     const rent = calculateRent({ ...state, board: newBoard, players: newPlayers }, newPosition, total);
     if (rent > 0) {
@@ -357,6 +399,8 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     log: [...state.log, ...logs].slice(-50),
     status: newStatus,
     winnerId,
+    freeParkingPool: newFreeParkingPool,
+    pendingTaxChoice: newPendingTaxChoice,
   };
 
   return { state: newState, dice: [d1, d2], isDoubles };
@@ -463,6 +507,9 @@ export function buyProperty(state: GameState, playerId: string): { state: GameSt
 export function endTurn(state: GameState, playerId: string): { state: GameState; error?: string } {
   if (state.currentPlayerId !== playerId) return { state, error: 'Not your turn' };
   if (!state.hasRolled) return { state, error: 'Must roll dice before ending turn' };
+  if (state.pendingTaxChoice && state.pendingTaxChoice.playerId === playerId) {
+    return { state, error: 'You must choose your tax payment before ending the turn' };
+  }
 
   const nextPlayerId = getNextPlayerId(state, playerId);
   const nextPlayer = state.players.find(p => p.id === nextPlayerId)!;
@@ -520,6 +567,24 @@ export function buildHouse(state: GameState, playerId: string, propertyIndex: nu
   if (!space.colorGroup) return { state, error: 'No color group' };
   if (!ownsColorGroup(state, playerId, space.colorGroup)) return { state, error: 'You need to own all properties in this color group' };
   if (space.hotel) return { state, error: 'Already has a hotel' };
+
+  const groupSpaces = state.board.filter(s => s.colorGroup === space.colorGroup);
+
+  if (groupSpaces.some(s => s.isMortgaged)) {
+    return { state, error: 'Cannot build while any property in this color group is mortgaged' };
+  }
+
+  if (space.houses < 4) {
+    const minHouses = Math.min(...groupSpaces.map(s => s.hotel ? 5 : s.houses));
+    if (space.houses > minHouses) {
+      return { state, error: 'Build evenly — add a house to another property in this group first' };
+    }
+  } else {
+    const othersReady = groupSpaces.filter(s => s.index !== propertyIndex).every(s => s.houses === 4 || s.hotel);
+    if (!othersReady) {
+      return { state, error: 'All properties in this group need 4 houses before building a hotel' };
+    }
+  }
 
   const cost = space.houses < 4 ? (space.houseCost || 1000) : (space.hotelCost || 1000);
   if (player.money < cost) return { state, error: 'Not enough money' };
@@ -745,6 +810,56 @@ export function auctionBuy(state: GameState, winnerId: string, propertyIndex: nu
         ...state.log,
         { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId },
       ].slice(-50),
+    },
+  };
+}
+
+export function chooseTax(state: GameState, playerId: string, choice: 'flat' | 'percent'): { state: GameState; error?: string } {
+  const tc = state.pendingTaxChoice;
+  if (!tc) return { state, error: 'No pending tax choice' };
+  if (tc.playerId !== playerId) return { state, error: 'Not your tax choice' };
+
+  const player = state.players.find(p => p.id === playerId);
+  if (!player) return { state, error: 'Player not found' };
+
+  const amount = choice === 'flat' ? tc.flat : tc.percent;
+  const newPlayers = state.players.map(p => p.id === playerId ? { ...p, money: p.money - amount } : p);
+  const newFreeParkingPool = state.freeParkingPool + amount;
+
+  return {
+    state: {
+      ...state,
+      players: newPlayers,
+      freeParkingPool: newFreeParkingPool,
+      pendingTaxChoice: null,
+      version: state.version + 1,
+      log: [...state.log, {
+        message: `${player.name} paid ${amount.toLocaleString()} DHS tax (${choice === 'flat' ? 'flat rate' : '10% of net worth'}) — added to Free Parking pool`,
+        timestamp: new Date().toISOString(),
+        playerId,
+      }].slice(-50),
+    },
+  };
+}
+
+export function declineTrade(state: GameState, playerId: string): { state: GameState; error?: string } {
+  const trade = state.pendingTrade;
+  if (!trade) return { state, error: 'No pending trade' };
+  if (trade.toPlayerId !== playerId) return { state, error: 'Not your trade to decline' };
+
+  const fromPlayer = state.players.find(p => p.id === trade.fromPlayerId);
+  const toPlayer = state.players.find(p => p.id === trade.toPlayerId);
+
+  return {
+    state: {
+      ...state,
+      pendingTrade: null,
+      version: state.version + 1,
+      log: [...state.log, {
+        message: `${toPlayer?.name ?? 'Player'} declined ${fromPlayer?.name ?? 'opponent'}'s trade offer`,
+        timestamp: new Date().toISOString(),
+        playerId,
+      }].slice(-50),
     },
   };
 }

@@ -37,6 +37,7 @@ export default function HomeScreen() {
   const [gameCode, setGameCode] = useState('');
   const [selectedToken, setSelectedToken] = useState('camel');
   const [npcCount, setNpcCount] = useState(2);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
 
@@ -52,7 +53,7 @@ export default function HomeScreen() {
       return;
     }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    const ok = await createSinglePlayerGame(playerName.trim(), selectedToken, npcCount);
+    const ok = await createSinglePlayerGame(playerName.trim(), selectedToken, npcCount, selectedDifficulty);
     if (ok) router.push('/game');
   };
 
@@ -241,6 +242,29 @@ export default function HomeScreen() {
                         {['Khalid', 'Tariq', 'Omar', 'Layla'][i]}
                       </Text>
                     </View>
+                  ))}
+                </View>
+              </View>
+
+              {/* Difficulty */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Difficulty</Text>
+                <View style={styles.npcRow}>
+                  {([
+                    { id: 'easy', label: 'Easy', emoji: '😊' },
+                    { id: 'medium', label: 'Medium', emoji: '🎯' },
+                    { id: 'hard', label: 'Hard', emoji: '🔥' },
+                  ] as const).map(d => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={[styles.npcBtn, { flex: 1 }, selectedDifficulty === d.id && styles.npcBtnActive]}
+                      onPress={() => setSelectedDifficulty(d.id)}
+                    >
+                      <Text style={{ fontSize: 18 }}>{d.emoji}</Text>
+                      <Text style={[styles.npcBtnLabel, selectedDifficulty === d.id && styles.npcBtnLabelActive]}>
+                        {d.label}
+                      </Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </View>

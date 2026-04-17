@@ -50,6 +50,12 @@ export interface TradeOffer {
   requestedMoney: number;
 }
 
+export interface PendingTaxChoice {
+  playerId: string;
+  flat: number;
+  percent: number;
+}
+
 export interface GameState {
   gameId: string;
   status: 'waiting' | 'playing' | 'finished';
@@ -62,7 +68,11 @@ export interface GameState {
   log: GameLog[];
   winnerId: string | null;
   pendingTrade: TradeOffer | null;
+  freeParkingPool: number;
+  pendingTaxChoice: PendingTaxChoice | null;
 }
+
+export type NpcDifficulty = 'easy' | 'medium' | 'hard';
 
 export const TOKENS = [
   { id: 'camel',    label: 'Camel',    image: require('../assets/tokens/camel.png') },
@@ -99,8 +109,10 @@ interface GameContextType {
   npcPlayerIds: string[];
   npcThinking: boolean;
   savedGame: SavedGame | null;
+  npcDifficulty: NpcDifficulty;
+  setNpcDifficulty: (d: NpcDifficulty) => void;
   createGame: (name: string, token: string) => Promise<string | null>;
-  createSinglePlayerGame: (name: string, token: string, npcCount: number) => Promise<boolean>;
+  createSinglePlayerGame: (name: string, token: string, npcCount: number, difficulty?: NpcDifficulty) => Promise<boolean>;
   joinGame: (gameId: string, name: string, token: string) => Promise<boolean>;
   resumeGame: () => Promise<boolean>;
   startGame: () => Promise<void>;
@@ -114,6 +126,8 @@ interface GameContextType {
   mortgageProperty: (propertyIndex: number, action: 'mortgage' | 'unmortgage') => Promise<void>;
   proposeTrade: (toPlayerId: string, offeredProps: number[], requestedProps: number[], offeredMoney: number, requestedMoney: number) => Promise<void>;
   acceptTrade: () => Promise<void>;
+  declineTrade: () => Promise<void>;
+  chooseTax: (choice: 'flat' | 'percent') => Promise<void>;
   claimAdReward: () => Promise<void>;
   clearError: () => void;
   lastDiceRoll: number[] | null;
@@ -135,6 +149,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [npcPlayerIds, setNpcPlayerIds] = useState<string[]>([]);
   const [npcThinking, setNpcThinking] = useState(false);
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
+  const [npcDifficulty, setNpcDifficulty] = useState<NpcDifficulty>('medium');
 
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingActiveRef = useRef(false);
@@ -188,7 +203,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           setGameState(data);
           if (data.diceRoll) setLastDiceRoll(data.diceRoll);
           if (data.status !== 'finished') {
-            pollingRef.current = setTimeout(() => startPolling(gameId, data.version), 100);
+            pollingRef.current = setTimeout(() => startPolling(gameId, data.version), 500);
           }
         } else {
           pollingRef.current = setTimeout(() => startPolling(gameId, version), 2000);
@@ -266,7 +281,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
           await delay(1000);
 
-          // 4. Decide whether to buy the landed property (smarter reserve: 1500 DHS)
+          // Difficulty-based reserve thresholds
+          const buyReserve  = npcDifficulty === 'easy' ? 2500 : npcDifficulty === 'hard' ? 800  : 1500;
+          const buildReserve = npcDifficulty === 'easy' ? 3000 : npcDifficulty === 'hard' ? 1200 : 2000;
+          const mortgageThreshold = npcDifficulty === 'easy' ? 1500 : npcDifficulty === 'hard' ? 500 : 1000;
+
+          // 4. Decide whether to buy the landed property
           const npcPlayer = currentState.players.find(p => p.id === currentId);
           if (npcPlayer) {
             const landedSpace = currentState.board[npcPlayer.position];
@@ -276,15 +296,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               !landedSpace.ownerId &&
               landedSpace.price != null &&
               npcPlayer.money >= landedSpace.price &&
-              npcPlayer.money - landedSpace.price >= 1500;
+              npcPlayer.money - landedSpace.price >= buyReserve;
 
             if (canBuy) {
-              await delay(700);
-              const boughtState = await api(`/games/${currentState.gameId}/buy`, 'POST', { playerId: currentId });
-              currentState = boughtState as GameState;
-              setGameState(currentState);
-              await delay(600);
+              // Color-group awareness: don't buy if it completes a human player's monopoly
+              const wouldCompleteOpponentGroup = landedSpace.colorGroup
+                ? (() => {
+                    const groupSpaces = currentState.board.filter(s => s.colorGroup === landedSpace.colorGroup);
+                    const humanIds = currentState.players.filter(p => !npcPlayerIds.includes(p.id)).map(p => p.id);
+                    return humanIds.some(hId => {
+                      const humanOwned = groupSpaces.filter(s => s.ownerId === hId).length;
+                      return humanOwned === groupSpaces.length - 1;
+                    });
+                  })()
+                : false;
+
+              if (!wouldCompleteOpponentGroup || npcDifficulty === 'hard') {
+                await delay(700);
+                try {
+                  const boughtState = await api(`/games/${currentState.gameId}/buy`, 'POST', { playerId: currentId });
+                  currentState = boughtState as GameState;
+                  setGameState(currentState);
+                  await delay(600);
+                } catch { /* ignore */ }
+              }
             }
+          }
+
+          // 4.5 Auto-resolve tax choice if the NPC has a pending tax choice
+          const npcForTax = currentState.players.find(p => p.id === currentId);
+          if (npcForTax && currentState.pendingTaxChoice?.playerId === currentId) {
+            await delay(500);
+            const tc = currentState.pendingTaxChoice;
+            const cheaperChoice: 'flat' | 'percent' = tc.flat <= tc.percent ? 'flat' : 'percent';
+            try {
+              const taxState = await api(`/games/${currentState.gameId}/choose-tax`, 'POST', { playerId: currentId, choice: cheaperChoice });
+              currentState = taxState as GameState;
+              setGameState(currentState);
+              await delay(400);
+            } catch { /* ignore */ }
           }
 
           // 5. Try to build a house if NPC owns a full color group and has reserve
@@ -292,12 +342,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           if (npcAfterBuy && !npcAfterBuy.inJail) {
             const buildableProps = currentState.board.filter(s => {
               if (s.type !== 'property' || !s.colorGroup || s.ownerId !== currentId || s.hotel) return false;
-              return currentState.board.filter(b => b.colorGroup === s.colorGroup).every(b => b.ownerId === currentId);
+              if (s.isMortgaged) return false;
+              const group = currentState.board.filter(b => b.colorGroup === s.colorGroup);
+              if (!group.every(b => b.ownerId === currentId)) return false;
+              if (group.some(b => b.isMortgaged)) return false;
+              const minHouses = Math.min(...group.map(b => b.hotel ? 5 : b.houses));
+              return (s.hotel ? 5 : s.houses) <= minHouses;
             });
             if (buildableProps.length > 0) {
               const candidate = buildableProps.sort((a, b) => (a.houseCost ?? 0) - (b.houseCost ?? 0))[0];
               const buildCost = candidate.houses < 4 ? (candidate.houseCost ?? 1000) : (candidate.hotelCost ?? 1000);
-              if (npcAfterBuy.money - buildCost >= 2000) {
+              if (npcAfterBuy.money - buildCost >= buildReserve) {
                 try {
                   await delay(700);
                   const builtState = await api(`/games/${currentState.gameId}/build`, 'POST', { playerId: currentId, propertyIndex: candidate.index });
@@ -305,6 +360,62 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                   setGameState(currentState);
                   await delay(500);
                 } catch { /* not buildable this turn, ignore */ }
+              }
+            }
+          }
+
+          // 5.5 Strategic unmortgage: if flush with cash, unmortgage cheapest property
+          const npcForUnmortgage = currentState.players.find(p => p.id === currentId);
+          if (npcForUnmortgage && npcForUnmortgage.money > buildReserve * 2) {
+            const mortgaged = currentState.board
+              .filter(s => s.ownerId === currentId && s.isMortgaged && s.mortgageValue)
+              .sort((a, b) => (a.mortgageValue ?? 0) - (b.mortgageValue ?? 0));
+            if (mortgaged.length > 0) {
+              const target = mortgaged[0];
+              const unmortgageCost = Math.floor((target.mortgageValue ?? 0) * 1.1);
+              if (npcForUnmortgage.money - unmortgageCost >= buildReserve) {
+                try {
+                  const unmortgageState = await api(`/games/${currentState.gameId}/mortgage`, 'POST', {
+                    playerId: currentId, propertyIndex: target.index, action: 'unmortgage',
+                  });
+                  currentState = unmortgageState as GameState;
+                  setGameState(currentState);
+                  await delay(400);
+                } catch { /* ignore */ }
+              }
+            }
+          }
+
+          // 5.6 NPC trading: if NPC owns 2 of 3 in a color group and a human has the missing one
+          const npcForTrade = currentState.players.find(p => p.id === currentId);
+          if (npcForTrade && npcForTrade.money > buildReserve * 1.5 && !currentState.pendingTrade && isSinglePlayer) {
+            const humanIds = currentState.players.filter(p => !npcPlayerIds.includes(p.id) && !p.isBankrupt).map(p => p.id);
+            const colorGroups = [...new Set(currentState.board.filter(s => s.type === 'property' && s.colorGroup).map(s => s.colorGroup!))];
+            let tradeMade = false;
+            for (const group of colorGroups) {
+              if (tradeMade) break;
+              const groupSpaces = currentState.board.filter(s => s.colorGroup === group);
+              const npcOwned = groupSpaces.filter(s => s.ownerId === currentId);
+              if (npcOwned.length !== groupSpaces.length - 1) continue;
+              for (const humanId of humanIds) {
+                const humanOwned = groupSpaces.filter(s => s.ownerId === humanId);
+                if (humanOwned.length !== 1) continue;
+                const targetProp = humanOwned[0];
+                const offerAmount = Math.floor((targetProp.price ?? 0) * 1.5);
+                if (offerAmount > 0 && npcForTrade.money - offerAmount >= buyReserve) {
+                  try {
+                    await delay(600);
+                    const tradeState = await api(`/games/${currentState.gameId}/trade`, 'POST', {
+                      fromPlayerId: currentId, toPlayerId: humanId,
+                      offeredPropertyIndices: [], requestedPropertyIndices: [targetProp.index],
+                      offeredMoney: offerAmount, requestedMoney: 0,
+                    });
+                    currentState = tradeState as GameState;
+                    setGameState(currentState);
+                    tradeMade = true;
+                  } catch { /* ignore */ }
+                  break;
+                }
               }
             }
           }
@@ -319,7 +430,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
         // 7. Emergency mortgage: if very low on money, mortgage an unmortgaged property
         const npcFinal = currentState.players.find(p => p.id === currentId);
-        if (npcFinal && npcFinal.money < 1000) {
+        const emergencyThreshold = npcDifficulty === 'easy' ? 1500 : npcDifficulty === 'hard' ? 500 : 1000;
+        if (npcFinal && npcFinal.money < emergencyThreshold) {
           const mortgageable = currentState.board.find(
             s => s.ownerId === currentId && !s.isMortgaged && !s.houses && !s.hotel && s.mortgageValue
           );
@@ -355,6 +467,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     gameState?.currentPlayerId,
     gameState?.hasRolled,
     gameState?.status,
+    npcDifficulty,
   ]);
 
   // Reset bot lock when turn changes
@@ -412,8 +525,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const createSinglePlayerGame = useCallback(async (
     name: string,
     token: string,
-    npcCount: number
+    npcCount: number,
+    difficulty: NpcDifficulty = 'medium'
   ): Promise<boolean> => {
+    setNpcDifficulty(difficulty);
     setIsLoading(true);
     setError(null);
     try {
@@ -600,12 +715,33 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const state = await api(`/games/${gameState.gameId}/trade`, 'POST', {
         fromPlayerId: gameState.pendingTrade?.fromPlayerId,
         toPlayerId: myPlayerId,
-        offeredPropertyIndices: [],
-        requestedPropertyIndices: [],
-        offeredMoney: 0,
-        requestedMoney: 0,
         accept: true,
       });
+      setGameState(state);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [gameState, myPlayerId]);
+
+  const declineTrade = useCallback(async () => {
+    if (!gameState || !myPlayerId) return;
+    setError(null);
+    try {
+      const state = await api(`/games/${gameState.gameId}/trade`, 'POST', {
+        toPlayerId: myPlayerId,
+        decline: true,
+      });
+      setGameState(state);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [gameState, myPlayerId]);
+
+  const chooseTax = useCallback(async (choice: 'flat' | 'percent') => {
+    if (!gameState || !myPlayerId) return;
+    setError(null);
+    try {
+      const state = await api(`/games/${gameState.gameId}/choose-tax`, 'POST', { playerId: myPlayerId, choice });
       setGameState(state);
     } catch (e: any) {
       setError(e.message);
@@ -701,6 +837,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       npcPlayerIds,
       npcThinking,
       savedGame,
+      npcDifficulty,
+      setNpcDifficulty,
       createGame,
       createSinglePlayerGame,
       joinGame,
@@ -716,6 +854,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       mortgageProperty,
       proposeTrade,
       acceptTrade,
+      declineTrade,
+      chooseTax,
       claimAdReward,
       clearError: () => setError(null),
       lastDiceRoll,

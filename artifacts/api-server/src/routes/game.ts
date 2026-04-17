@@ -14,6 +14,8 @@ import {
   acceptTrade,
   claimAdReward,
   auctionBuy,
+  chooseTax,
+  declineTrade,
 } from '../game/gameState.js';
 import { getGame, setGame, generateGameId } from '../game/gameStore.js';
 
@@ -178,7 +180,14 @@ router.post('/:gameId/reward', (req, res) => {
 router.post('/:gameId/trade', (req, res) => {
   const state = getGame(req.params.gameId);
   if (!state) return res.status(404).json({ error: 'Game not found' });
-  const { fromPlayerId, toPlayerId, offeredPropertyIndices, requestedPropertyIndices, offeredMoney, requestedMoney, accept } = req.body;
+  const { fromPlayerId, toPlayerId, offeredPropertyIndices, requestedPropertyIndices, offeredMoney, requestedMoney, accept, decline } = req.body;
+
+  if (decline) {
+    const { state: newState, error } = declineTrade(state, toPlayerId || fromPlayerId);
+    if (error) return res.status(400).json({ error });
+    setGame(req.params.gameId, newState);
+    return res.json(newState);
+  }
 
   if (accept) {
     const { state: newState, error } = acceptTrade(state, toPlayerId || fromPlayerId);
@@ -196,6 +205,19 @@ router.post('/:gameId/trade', (req, res) => {
     offeredMoney: offeredMoney || 0,
     requestedMoney: requestedMoney || 0,
   });
+  if (error) return res.status(400).json({ error });
+  setGame(req.params.gameId, newState);
+  res.json(newState);
+});
+
+// POST /api/games/:gameId/choose-tax — resolve the tax choice (flat or percent)
+router.post('/:gameId/choose-tax', (req, res) => {
+  const state = getGame(req.params.gameId);
+  if (!state) return res.status(404).json({ error: 'Game not found' });
+  const { playerId, choice } = req.body;
+  if (!playerId || !choice) return res.status(400).json({ error: 'playerId and choice are required' });
+  if (choice !== 'flat' && choice !== 'percent') return res.status(400).json({ error: 'choice must be flat or percent' });
+  const { state: newState, error } = chooseTax(state, playerId, choice);
   if (error) return res.status(400).json({ error });
   setGame(req.params.gameId, newState);
   res.json(newState);

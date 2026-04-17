@@ -17,12 +17,23 @@ pnpm workspace monorepo using TypeScript. Contains the **Dawaar** app — a Midd
 - Full Monopoly rules: buy properties, build houses/hotels, collect rent, chance/community cards
 - Jail, airlines, utilities
 - Currency: Dirhams (DHS), starting money: 15,000 DHS
-- Trade system between players (TradeModal with 3-step flow)
+- Trade system between players (TradeModal with 3-step flow; Decline button)
 - Mortgage/unmortgage properties
 - Auction declined properties (single-player)
 - RevenueCat subscription integration (real in-app purchases — see below)
 - Privacy Policy page: app/privacy.tsx
 - Dark navy and gold aesthetic with Arabic typography
+- Free Parking pool: tax/fine amounts accumulate, collected on landing
+- Tax choice: flat fee vs 10% net worth — player/NPC picks cheaper option
+- NPC AI with Easy/Medium/Hard difficulty selector on setup screen
+- NPC color-group awareness, auto-tax resolution, strategic unmortgage, basic trading
+- Even-building rule enforced (can't skip ahead within a color group)
+- React.memo on BoardCell + GameBoard for render performance
+- Long-press any board cell to open its property card
+- Log filter chips: All / Rent / Cards / Buildings / Trades
+- Bankruptcy toast overlay when a player goes bankrupt
+- End Turn confirmation dialog (Alert.alert)
+- PropertyCard header shows house pips / hotel badge prominently
 
 ## Board Color Groups (most → least expensive)
 - **Dark Blue** (most expensive): Mecca (4000 DHS), Medina (4000 DHS)
@@ -99,7 +110,8 @@ The seed script creates the Dawaar project, iOS/Android apps, a `premium` entitl
 - `POST /api/games/:id/end-turn` — End turn
 - `POST /api/games/:id/build` — Build house/hotel
 - `POST /api/games/:id/mortgage` — Mortgage/unmortgage property
-- `POST /api/games/:id/trade` — Propose/accept trade
+- `POST /api/games/:id/trade` — Propose/accept/decline trade
+- `POST /api/games/:id/choose-tax` — Resolve pending tax choice (flat or percent)
 - `POST /api/games/:id/auction` — Submit auction bid
 - `POST /api/games/:id/claim-ad-reward` — Claim ad bonus (1500 DHS)
 - `GET /api/games/:id/poll?version=N` — Long-poll for state updates
