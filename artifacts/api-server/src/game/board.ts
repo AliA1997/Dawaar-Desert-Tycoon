@@ -23,7 +23,7 @@ export const BOARD: BoardSpace[] = [
   { index: 2,  name: 'Community Chest',  nameAr: 'صندوق المجتمع',       type: 'community' },
   { index: 3,  name: "Sana'a",           nameAr: 'صنعاء',              type: 'property', price: 800,  rent: [60,  300,  900, 2700, 4000, 5500],  houseCost: 500,  hotelCost: 500,  mortgageValue: 400,  colorGroup: 'brown' },
   { index: 4,  name: 'Zakat Tax',        nameAr: 'ضريبة الزكاة',        type: 'tax', taxAmount: 500 },
-  { index: 5,  name: 'Haramain Railway', nameAr: 'قطار الحرمين',        type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
+  { index: 5,  name: 'Emirates',         nameAr: 'طيران الإمارات',       type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
   // ─── LIGHT BLUE ─────────────────────────────────────────────────────────────
   { index: 6,  name: 'Khartoum',         nameAr: 'الخرطوم',            type: 'property', price: 1000, rent: [60,  300,  900, 2700, 4000, 5500],  houseCost: 500,  hotelCost: 500,  mortgageValue: 500,  colorGroup: 'lightblue' },
   { index: 7,  name: 'Chance',           nameAr: 'الحظ',               type: 'chance' },
@@ -35,7 +35,7 @@ export const BOARD: BoardSpace[] = [
   { index: 12, name: 'Gulf Electricity', nameAr: 'كهرباء الخليج',       type: 'utility',  price: 1500, mortgageValue: 750 },
   { index: 13, name: 'Muscat',           nameAr: 'مسقط',               type: 'property', price: 1400, rent: [100,  500, 1500, 4500, 6250,  7500], houseCost: 1000, hotelCost: 1000, mortgageValue: 700,  colorGroup: 'pink' },
   { index: 14, name: 'Damascus',         nameAr: 'دمشق',               type: 'property', price: 1600, rent: [120,  600, 1800, 5000, 7000,  9000], houseCost: 1000, hotelCost: 1000, mortgageValue: 800,  colorGroup: 'pink' },
-  { index: 15, name: 'Etihad Rail',      nameAr: 'قطار الاتحاد',        type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
+  { index: 15, name: 'Etihad Airways',   nameAr: 'الاتحاد للطيران',     type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
   // ─── ORANGE ──────────────────────────────────────────────────────────────────
   { index: 16, name: 'Baghdad',          nameAr: 'بغداد',              type: 'property', price: 1800, rent: [140,  700, 2000, 5500, 7500,  9500], houseCost: 1000, hotelCost: 1000, mortgageValue: 900,  colorGroup: 'orange' },
   { index: 17, name: 'Community Chest',  nameAr: 'صندوق المجتمع',       type: 'community' },
@@ -45,26 +45,26 @@ export const BOARD: BoardSpace[] = [
   // ─── RED ─────────────────────────────────────────────────────────────────────
   { index: 21, name: 'Casablanca',       nameAr: 'الدار البيضاء',       type: 'property', price: 2200, rent: [180,  900, 2500, 7000, 8750, 10500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1100, colorGroup: 'red' },
   { index: 22, name: 'Chance',           nameAr: 'الحظ',               type: 'chance' },
-  { index: 23, name: 'Ankara',           nameAr: 'أنقرة',              type: 'property', price: 2200, rent: [180,  900, 2500, 7000, 8750, 10500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1100, colorGroup: 'red' },
+  { index: 23, name: 'Gaza City',        nameAr: 'غزة',                type: 'property', price: 2200, rent: [180,  900, 2500, 7000, 8750, 10500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1100, colorGroup: 'red' },
   { index: 24, name: 'Cairo',            nameAr: 'القاهرة',            type: 'property', price: 2400, rent: [200, 1000, 3000, 7500, 9250, 11000], houseCost: 1500, hotelCost: 1500, mortgageValue: 1200, colorGroup: 'red' },
-  { index: 25, name: 'Al-Boraq Railway', nameAr: 'قطار البراق',         type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
+  { index: 25, name: 'Qatar Airways',    nameAr: 'الخطوط القطرية',      type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
   // ─── YELLOW ──────────────────────────────────────────────────────────────────
-  { index: 26, name: 'Riyadh',           nameAr: 'الرياض',             type: 'property', price: 2600, rent: [220, 1100, 3300, 8000, 9750, 11500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1300, colorGroup: 'yellow' },
-  { index: 27, name: 'Jeddah',           nameAr: 'جدة',                type: 'property', price: 2600, rent: [220, 1100, 3300, 8000, 9750, 11500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1300, colorGroup: 'yellow' },
+  { index: 26, name: 'Doha',             nameAr: 'الدوحة',             type: 'property', price: 2600, rent: [220, 1100, 3300, 8000, 9750, 11500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1300, colorGroup: 'yellow' },
+  { index: 27, name: 'Riyadh',           nameAr: 'الرياض',             type: 'property', price: 2600, rent: [220, 1100, 3300, 8000, 9750, 11500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1300, colorGroup: 'yellow' },
   { index: 28, name: 'Nile Water Co.',   nameAr: 'شركة مياه النيل',     type: 'utility',  price: 1500, mortgageValue: 750 },
-  { index: 29, name: 'Mecca',            nameAr: 'مكة المكرمة',        type: 'property', price: 2800, rent: [240, 1200, 3600, 8500, 10250, 12000], houseCost: 1500, hotelCost: 1500, mortgageValue: 1400, colorGroup: 'yellow' },
+  { index: 29, name: 'Jeddah',           nameAr: 'جدة',                type: 'property', price: 2800, rent: [240, 1200, 3600, 8500, 10250, 12000], houseCost: 1500, hotelCost: 1500, mortgageValue: 1400, colorGroup: 'yellow' },
   { index: 30, name: 'Go to Jail',       nameAr: 'اذهب إلى السجن',     type: 'go_to_jail' },
-  // ─── GREEN — somewhat expensive ──────────────────────────────────────────────
-  { index: 31, name: 'Manama',           nameAr: 'المنامة',            type: 'property', price: 3000, rent: [260, 1300, 3900, 9000, 11000, 12750], houseCost: 2000, hotelCost: 2000, mortgageValue: 1500, colorGroup: 'green' },
-  { index: 32, name: 'Abu Dhabi',        nameAr: 'أبوظبي',             type: 'property', price: 3000, rent: [260, 1300, 3900, 9000, 11000, 12750], houseCost: 2000, hotelCost: 2000, mortgageValue: 1500, colorGroup: 'green' },
+  // ─── GREEN ───────────────────────────────────────────────────────────────────
+  { index: 31, name: 'Jerusalem',        nameAr: 'القدس',              type: 'property', price: 3000, rent: [260, 1300, 3900, 9000, 11000, 12750], houseCost: 2000, hotelCost: 2000, mortgageValue: 1500, colorGroup: 'green' },
+  { index: 32, name: 'Dubai',            nameAr: 'دبي',                type: 'property', price: 3200, rent: [280, 1500, 4500, 10000, 12000, 14000], houseCost: 2000, hotelCost: 2000, mortgageValue: 1600, colorGroup: 'green' },
   { index: 33, name: 'Community Chest',  nameAr: 'صندوق المجتمع',       type: 'community' },
-  { index: 34, name: 'Doha',             nameAr: 'الدوحة',             type: 'property', price: 3200, rent: [280, 1500, 4500, 10000, 12000, 14000], houseCost: 2000, hotelCost: 2000, mortgageValue: 1600, colorGroup: 'green' },
-  { index: 35, name: 'Qatar Airways',    nameAr: 'الخطوط القطرية',      type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
+  { index: 34, name: 'Abu Dhabi',        nameAr: 'أبوظبي',             type: 'property', price: 3400, rent: [300, 1600, 4800, 10500, 12500, 14750], houseCost: 2000, hotelCost: 2000, mortgageValue: 1700, colorGroup: 'green' },
+  { index: 35, name: 'Saudia',           nameAr: 'الخطوط السعودية',     type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [250, 500, 1000, 2000] },
   { index: 36, name: 'Chance',           nameAr: 'الحظ',               type: 'chance' },
-  // ─── DARK BLUE — most expensive ──────────────────────────────────────────────
-  { index: 37, name: 'Istanbul',         nameAr: 'إسطنبول',            type: 'property', price: 3500, rent: [350, 1750, 5000, 11000, 13000, 15000], houseCost: 2000, hotelCost: 2000, mortgageValue: 1750, colorGroup: 'darkblue' },
+  // ─── DARK BLUE — most expensive (holy cities) ────────────────────────────────
+  { index: 37, name: 'Mecca',            nameAr: 'مكة المكرمة',        type: 'property', price: 3800, rent: [400, 1800, 5500, 12500, 15500, 18000], houseCost: 2000, hotelCost: 2000, mortgageValue: 1900, colorGroup: 'darkblue' },
   { index: 38, name: 'Oil Revenue Tax',  nameAr: 'ضريبة النفط',         type: 'tax', taxAmount: 2000 },
-  { index: 39, name: 'Dubai',            nameAr: 'دبي',                type: 'property', price: 4000, rent: [500, 2000, 6000, 14000, 17000, 20000], houseCost: 2000, hotelCost: 2000, mortgageValue: 2000, colorGroup: 'darkblue' },
+  { index: 39, name: 'Medina',           nameAr: 'المدينة المنورة',     type: 'property', price: 4000, rent: [500, 2000, 6000, 14000, 17000, 20000], houseCost: 2000, hotelCost: 2000, mortgageValue: 2000, colorGroup: 'darkblue' },
 ];
 
 export const COLOR_GROUPS: Record<string, { color: string; dark: string }> = {
@@ -84,11 +84,11 @@ export const CHANCE_CARDS = [
     action: 'go_to_go',
   },
   {
-    text: 'A royal summons arrives sealed in gold wax — the Sheikh of Dubai requests your immediate presence. Advance to Dubai, collect 2,000 DHS if you pass GO.',
+    text: 'A divine calling leads you on pilgrimage. Advance to Medina — collect 2,000 DHS if you pass GO along the way.',
     action: 'go_to_39',
   },
   {
-    text: 'The Riyadh Investment Forum has reserved the front row for you. Advance to Riyadh — collect 2,000 DHS if you pass GO along the way.',
+    text: 'The Doha Investment Forum has reserved the front row for you. Advance to Doha — collect 2,000 DHS if you pass GO along the way.',
     action: 'go_to_26',
   },
   {
@@ -104,7 +104,7 @@ export const CHANCE_CARDS = [
     action: 'pay_1500',
   },
   {
-    text: 'A camel is far too slow — board the Haramain High-Speed Railway instead! Advance to the nearest station on the board.',
+    text: 'Board an Emirates flight to your next destination! Advance to the nearest airline on the board.',
     action: 'nearest_railroad',
   },
   {
@@ -187,7 +187,7 @@ export const COMMUNITY_CARDS = [
     action: 'pay_1000',
   },
   {
-    text: 'The regional tourism board awards you a prize for promoting Emirati cultural heritage to international visitors. Collect 500 DHS.',
+    text: 'The regional tourism board awards you a prize for promoting Arab cultural heritage to international visitors. Collect 500 DHS.',
     action: 'collect_500',
   },
   {

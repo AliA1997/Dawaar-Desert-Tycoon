@@ -6,17 +6,12 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '@/constants/colors';
-import { useSubscription, type Plan } from '@/hooks/useSubscription';
-
-const MONTHLY_PRICE = 9.99;
-const ANNUAL_PRICE = parseFloat((MONTHLY_PRICE * 12 * 0.85).toFixed(2));
-const ANNUAL_MONTHLY = parseFloat((ANNUAL_PRICE / 12).toFixed(2));
-const DISCOUNT_PCT = 15;
+import { useSubscription } from '@/lib/revenuecat';
 
 const FEATURES = [
   { icon: 'ban' as const, text: 'No ads — ever' },
@@ -31,50 +26,49 @@ interface Props {
 }
 
 export default function SubscribeModal({ visible, onClose }: Props) {
-  const { isSubscribed, plan, subscribe, cancelSubscription } = useSubscription();
-  const [selected, setSelected] = useState<Plan>('annual');
-  const [loading, setLoading] = useState(false);
+  const { isSubscribed, offerings, purchase, restore, isPurchasing, isRestoring } =
+    useSubscription();
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
-  const handleSubscribe = async () => {
-    setLoading(true);
-    await subscribe(selected);
-    setLoading(false);
-    Alert.alert(
-      'Welcome to Dawaar Premium!',
-      `Your ${selected === 'annual' ? 'annual' : 'monthly'} subscription is active. Enjoy an ad-free game!`,
-      [{ text: "Let's Play!", onPress: onClose }],
-    );
+  const currentOffering = offerings?.current;
+  const pkg = currentOffering?.availablePackages[0];
+  const priceString = pkg?.product?.priceString ?? '…';
+
+  const handlePurchase = async () => {
+    if (!pkg) return;
+    setConfirmVisible(true);
   };
 
-  const handleCancel = () => {
-    Alert.alert(
-      'Cancel Subscription',
-      'Are you sure you want to cancel your Premium subscription? Ads will return.',
-      [
-        { text: 'Keep Premium', style: 'cancel' },
-        {
-          text: 'Cancel Anyway',
-          style: 'destructive',
-          onPress: async () => {
-            await cancelSubscription();
-            onClose();
-          },
-        },
-      ],
-    );
+  const confirmPurchase = async () => {
+    setConfirmVisible(false);
+    if (!pkg) return;
+    try {
+      await purchase(pkg);
+      onClose();
+    } catch (err: any) {
+      if (!err?.userCancelled) {
+        console.error('Purchase failed:', err?.message ?? err);
+      }
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      await restore();
+    } catch (err: any) {
+      console.error('Restore failed:', err?.message ?? err);
+    }
   };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
-          {/* Close */}
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={20} color={Colors.warmCream} />
           </TouchableOpacity>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Header */}
             <LinearGradient
               colors={[Colors.gold + 'CC', '#A07830CC']}
               start={{ x: 0, y: 0 }}
@@ -86,9 +80,8 @@ export default function SubscribeModal({ visible, onClose }: Props) {
               <Text style={styles.subtitle}>Play without limits — no ads, ever</Text>
             </LinearGradient>
 
-            {/* Feature list */}
             <View style={styles.features}>
-              {FEATURES.map(f => (
+              {FEATURES.map((f) => (
                 <View key={f.text} style={styles.featureRow}>
                   <View style={styles.featureIcon}>
                     <Ionicons name={f.icon} size={16} color={Colors.gold} />
@@ -99,96 +92,86 @@ export default function SubscribeModal({ visible, onClose }: Props) {
             </View>
 
             {isSubscribed ? (
-              /* ── Already subscribed ── */
               <View style={styles.activeBox}>
-                <Ionicons name="checkmark-circle" size={32} color="#22C55E" />
+                <Ionicons name="checkmark-circle" size={40} color="#22C55E" />
                 <Text style={styles.activeTitle}>You're Premium!</Text>
-                <Text style={styles.activePlan}>
-                  {plan === 'annual' ? 'Annual plan' : 'Monthly plan'} · Active
-                </Text>
-                <TouchableOpacity style={styles.cancelLink} onPress={handleCancel}>
-                  <Text style={styles.cancelLinkText}>Cancel subscription</Text>
+                <Text style={styles.activeSub}>Ad-free play is active on this device.</Text>
+                <TouchableOpacity style={styles.restoreBtn} onPress={handleRestore}>
+                  <Text style={styles.restoreBtnText}>Restore Purchases</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                {/* Plan cards */}
-                <View style={styles.plans}>
-                  {/* Annual */}
-                  <TouchableOpacity
-                    style={[styles.planCard, selected === 'annual' && styles.planCardSelected]}
-                    onPress={() => setSelected('annual')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.planCardTop}>
-                      <View style={styles.saveBadge}>
-                        <Text style={styles.saveBadgeText}>SAVE {DISCOUNT_PCT}%</Text>
-                      </View>
-                      <View style={[styles.planRadio, selected === 'annual' && styles.planRadioSelected]}>
-                        {selected === 'annual' && <View style={styles.planRadioDot} />}
-                      </View>
-                    </View>
-                    <Text style={styles.planName}>Annual</Text>
-                    <Text style={styles.planPrice}>
-                      ${ANNUAL_MONTHLY.toFixed(2)}
-                      <Text style={styles.planPer}>/mo</Text>
-                    </Text>
-                    <Text style={styles.planBilled}>Billed ${ANNUAL_PRICE}/year</Text>
-                  </TouchableOpacity>
-
-                  {/* Monthly */}
-                  <TouchableOpacity
-                    style={[styles.planCard, selected === 'monthly' && styles.planCardSelected]}
-                    onPress={() => setSelected('monthly')}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.planCardTop}>
-                      <View style={styles.trialBadge}>
-                        <Text style={styles.trialBadgeText}>7-DAY FREE TRIAL</Text>
-                      </View>
-                      <View style={[styles.planRadio, selected === 'monthly' && styles.planRadioSelected]}>
-                        {selected === 'monthly' && <View style={styles.planRadioDot} />}
-                      </View>
-                    </View>
-                    <Text style={styles.planName}>Monthly</Text>
-                    <Text style={styles.planPrice}>
-                      ${MONTHLY_PRICE.toFixed(2)}
-                      <Text style={styles.planPer}>/mo</Text>
-                    </Text>
-                    <Text style={styles.planBilled}>Free for 7 days, then ${MONTHLY_PRICE}/mo</Text>
-                  </TouchableOpacity>
+                <View style={styles.priceBox}>
+                  <Text style={styles.priceLabel}>Monthly</Text>
+                  <Text style={styles.priceValue}>{priceString}</Text>
+                  <Text style={styles.pricePer}>per month</Text>
                 </View>
 
-                {/* CTA */}
                 <TouchableOpacity
-                  style={[styles.subscribeBtn, loading && { opacity: 0.6 }]}
-                  onPress={handleSubscribe}
-                  disabled={loading}
+                  style={[styles.subscribeBtn, (isPurchasing || !pkg) && { opacity: 0.6 }]}
+                  onPress={handlePurchase}
+                  disabled={isPurchasing || !pkg}
                   activeOpacity={0.85}
                 >
-                  <LinearGradient colors={[Colors.gold, '#A07830']} style={styles.subscribeBtnGrad}>
-                    <Text style={styles.subscribeBtnText}>
-                      {loading
-                        ? 'Processing…'
-                        : selected === 'monthly'
-                        ? 'Start Free Trial'
-                        : `Subscribe — $${ANNUAL_PRICE}/yr`}
-                    </Text>
+                  <LinearGradient
+                    colors={[Colors.gold, '#A07830']}
+                    style={styles.subscribeBtnGrad}
+                  >
+                    {isPurchasing ? (
+                      <ActivityIndicator color={Colors.darkBg} />
+                    ) : (
+                      <Text style={styles.subscribeBtnText}>Subscribe — {priceString}/mo</Text>
+                    )}
                   </LinearGradient>
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                  style={[styles.restoreBtn, isRestoring && { opacity: 0.5 }]}
+                  onPress={handleRestore}
+                  disabled={isRestoring}
+                >
+                  <Text style={styles.restoreBtnText}>
+                    {isRestoring ? 'Restoring…' : 'Restore Purchases'}
+                  </Text>
+                </TouchableOpacity>
+
                 <Text style={styles.legalText}>
-                  {selected === 'monthly'
-                    ? `Free for 7 days, then $${MONTHLY_PRICE}/month. Cancel anytime.`
-                    : `$${ANNUAL_PRICE} billed annually ($${ANNUAL_MONTHLY.toFixed(2)}/month). Cancel anytime.`}
-                  {'\n'}Payment processed via App Store / Google Play.
-                  {'\n'}Subscriptions auto-renew unless cancelled.
+                  {`${priceString}/month. Cancel anytime via App Store or Google Play.\nSubscriptions auto-renew unless cancelled at least 24 hours before renewal.\nPayment charged to your store account on confirmation.`}
                 </Text>
               </>
             )}
           </ScrollView>
         </View>
       </View>
+
+      {/* Confirmation dialog for test mode */}
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>Confirm Purchase</Text>
+            <Text style={styles.confirmBody}>
+              Subscribe to Dawaar Premium for {priceString}/month?
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity
+                style={styles.confirmCancel}
+                onPress={() => setConfirmVisible(false)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmOk} onPress={confirmPurchase}>
+                <Text style={styles.confirmOkText}>Subscribe</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -228,11 +211,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
   },
   crownEmoji: { fontSize: 36, marginBottom: 2 },
-  title: {
-    fontSize: 24,
-    fontFamily: 'Inter_700Bold',
-    color: Colors.darkBg,
-  },
+  title: { fontSize: 24, fontFamily: 'Inter_700Bold', color: Colors.darkBg },
   subtitle: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
@@ -246,11 +225,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   featureIcon: {
     width: 30,
     height: 30,
@@ -264,145 +239,140 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: Colors.warmCream,
   },
-  plans: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 4,
-  },
-  planCard: {
-    flex: 1,
-    backgroundColor: '#111E33',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: 14,
-    gap: 4,
-  },
-  planCardSelected: {
-    borderColor: Colors.gold,
-    backgroundColor: Colors.gold + '12',
-  },
-  planCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  saveBadge: {
-    backgroundColor: '#22C55E22',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  saveBadgeText: {
-    fontSize: 9,
-    fontFamily: 'Inter_700Bold',
-    color: '#22C55E',
-    letterSpacing: 0.5,
-  },
-  trialBadge: {
-    backgroundColor: Colors.gold + '22',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  trialBadgeText: {
-    fontSize: 9,
-    fontFamily: 'Inter_700Bold',
-    color: Colors.gold,
-    letterSpacing: 0.5,
-  },
-  planRadio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
+  priceBox: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 2,
   },
-  planRadioSelected: {
-    borderColor: Colors.gold,
-  },
-  planRadioDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: Colors.gold,
-  },
-  planName: {
+  priceLabel: {
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
-    color: 'rgba(255,255,255,0.55)',
+    color: 'rgba(255,255,255,0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  planPrice: {
-    fontSize: 26,
+  priceValue: {
+    fontSize: 40,
     fontFamily: 'Inter_700Bold',
     color: Colors.warmCream,
   },
-  planPer: {
+  pricePer: {
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.45)',
-  },
-  planBilled: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
     color: 'rgba(255,255,255,0.4)',
-    lineHeight: 15,
   },
   subscribeBtn: {
     marginHorizontal: 16,
-    marginTop: 16,
     borderRadius: 16,
     overflow: 'hidden',
+    marginBottom: 12,
   },
   subscribeBtnGrad: {
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 52,
   },
   subscribeBtnText: {
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
     color: Colors.darkBg,
   },
+  restoreBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginHorizontal: 16,
+  },
+  restoreBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(255,255,255,0.4)',
+    textDecorationLine: 'underline',
+  },
   legalText: {
     marginHorizontal: 16,
-    marginTop: 12,
-    fontSize: 11,
+    marginTop: 8,
+    fontSize: 10,
     fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.3)',
+    color: 'rgba(255,255,255,0.25)',
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: 15,
   },
   activeBox: {
     alignItems: 'center',
-    padding: 28,
-    gap: 6,
+    padding: 32,
+    gap: 8,
   },
   activeTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: 'Inter_700Bold',
     color: '#22C55E',
     marginTop: 4,
   },
-  activePlan: {
+  activeSub: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
   },
-  cancelLink: {
-    marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  cancelLinkText: {
-    fontSize: 13,
+  confirmBox: {
+    backgroundColor: '#0C1625',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.25)',
+    gap: 12,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+    textAlign: 'center',
+  },
+  confirmBody: {
+    fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#EF4444',
-    textDecorationLine: 'underline',
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  confirmBtns: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  confirmCancel: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  confirmOk: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: Colors.gold,
+    alignItems: 'center',
+  },
+  confirmOkText: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.darkBg,
   },
 });

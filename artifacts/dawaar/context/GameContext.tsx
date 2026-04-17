@@ -28,6 +28,7 @@ export interface BoardProperty {
   hotelCost?: number;
   mortgageValue?: number;
   colorGroup?: string;
+  taxAmount?: number;
   ownerId: string | null;
   houses: number;
   hotel: boolean;
@@ -67,8 +68,8 @@ export const TOKENS = [
   { id: 'camel',    label: 'Camel',    image: require('../assets/tokens/camel.png') },
   { id: 'falcon',   label: 'Falcon',   image: require('../assets/tokens/falcon.png') },
   { id: 'dhow',     label: 'Tiger',    image: require('../assets/tokens/tiger.png') },
-  { id: 'palm',     label: 'Big Cat',  image: require('../assets/tokens/big.png') },
-  { id: 'crescent', label: 'Camel',    image: require('../assets/tokens/mammal.png') },
+  { id: 'palm',     label: 'Panther',  image: require('../assets/tokens/big.png') },
+  { id: 'crescent', label: 'Gazelle',  image: require('../assets/tokens/mammal.png') },
   { id: 'lamp',     label: 'Lantern',  image: require('../assets/tokens/lantern.png') },
 ];
 

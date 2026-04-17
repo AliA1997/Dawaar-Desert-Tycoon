@@ -27,6 +27,7 @@ export interface BoardProperty {
   hotelCost?: number;
   mortgageValue?: number;
   colorGroup?: string;
+  taxAmount?: number;
   ownerId: string | null;
   houses: number;
   hotel: boolean;

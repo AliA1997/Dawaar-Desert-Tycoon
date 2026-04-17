@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@nkzw/create-context-hook": "^1.1.0",
-    "expo-clipboard": "^8.0.8"
+    "expo-clipboard": "^8.0.8",
+    "react-native-purchases": "^10.0.0"
   }
 }

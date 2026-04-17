@@ -32,8 +32,9 @@ import Animated, {
 import Colors from '@/constants/colors';
 import { useGame, TOKENS, getTokenImage } from '@/context/GameContext';
 import type { BoardProperty, Player } from '@/context/GameContext';
-import { useSubscription } from '@/hooks/useSubscription';
+import { useSubscription } from '@/lib/revenuecat';
 import SubscribeModal from '@/components/SubscribeModal';
+import TradeModal from '@/components/TradeModal';
 
 const DICE_GIF = require('../assets/dice.gif');
 
@@ -726,7 +727,7 @@ export default function GameScreen() {
     rollDice, buyProperty, buildHouse, sellHouse, auctionBuy, endTurn, payJail, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
-    claimAdReward,
+    claimAdReward, proposeTrade, acceptTrade,
   } = useGame();
 
   const [selectedProperty, setSelectedProperty] = useState<BoardProperty | null>(null);
@@ -753,6 +754,7 @@ export default function GameScreen() {
   const [adClaiming, setAdClaiming] = useState(false);
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [showSubscribe, setShowSubscribe] = useState(false);
+  const [showTrade, setShowTrade] = useState(false);
   const [doublesGranted, setDoublesGranted] = useState(false);
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1122,6 +1124,24 @@ export default function GameScreen() {
 
       {/* Actions Panel */}
       <View style={[gameStyles.actionsPanel, { paddingBottom: botPad + 8 }]}>
+        {/* Pending trade banner — shows when someone proposes a trade to you */}
+        {!isSinglePlayer && gameState.pendingTrade && gameState.pendingTrade.toPlayerId === myPlayerId && (() => {
+          const from = gameState.players.find(p => p.id === gameState.pendingTrade?.fromPlayerId);
+          return (
+            <View style={gameStyles.tradeBanner}>
+              <Ionicons name="swap-horizontal" size={18} color={Colors.gold} />
+              <Text style={gameStyles.tradeBannerText} numberOfLines={1}>
+                {from?.name ?? 'Someone'} wants to trade with you!
+              </Text>
+              <TouchableOpacity
+                style={gameStyles.tradeAcceptBtn}
+                onPress={async () => { try { await acceptTrade(); } catch {} }}
+              >
+                <Text style={gameStyles.tradeAcceptText}>Accept</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })()}
         {isMyTurn ? (
           <View style={gameStyles.actionBtns}>
             {!gameState.hasRolled && myPlayer?.inJail && (
@@ -1161,6 +1181,14 @@ export default function GameScreen() {
                 <View style={gameStyles.buildBtnInner}>
                   <Ionicons name="home" size={18} color="#22C55E" />
                   <Text style={gameStyles.buildBtnText}>Build / Sell</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+            {isMyTurn && !isSinglePlayer && (
+              <TouchableOpacity style={gameStyles.buildBtn} onPress={() => setShowTrade(true)}>
+                <View style={gameStyles.buildBtnInner}>
+                  <Ionicons name="swap-horizontal" size={18} color={Colors.gold} />
+                  <Text style={[gameStyles.buildBtnText, { color: Colors.gold }]}>Trade</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -1601,6 +1629,18 @@ export default function GameScreen() {
 
       {/* ─── Subscribe Modal ──────────────────────────────────────────────── */}
       <SubscribeModal visible={showSubscribe} onClose={() => setShowSubscribe(false)} />
+
+      {/* ─── Trade Modal ─────────────────────────────────────────────────── */}
+      {myPlayer && gameState && (
+        <TradeModal
+          visible={showTrade}
+          onClose={() => setShowTrade(false)}
+          myPlayer={myPlayer}
+          otherPlayers={gameState.players.filter(p => p.id !== myPlayerId && !p.isBankrupt)}
+          board={gameState.board}
+          onPropose={proposeTrade}
+        />
+      )}
 
     </View>
   );
@@ -2069,6 +2109,35 @@ const gameStyles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_600SemiBold',
     color: '#22C55E',
+  },
+  tradeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gold + '18',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gold + '50',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    gap: 8,
+  },
+  tradeBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.warmCream,
+  },
+  tradeAcceptBtn: {
+    backgroundColor: Colors.gold,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tradeAcceptText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.darkBg,
   },
   buildEmptyText: {
     color: '#6B7280',

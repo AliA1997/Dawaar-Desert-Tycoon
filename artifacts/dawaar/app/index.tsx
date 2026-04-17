@@ -20,7 +20,7 @@ import * as Haptics from 'expo-haptics';
 
 import Colors from '@/constants/colors';
 import { useGame, TOKENS } from '@/context/GameContext';
-import { useSubscription } from '@/hooks/useSubscription';
+import { useSubscription } from '@/lib/revenuecat';
 import SubscribeModal from '@/components/SubscribeModal';
 
 type Screen = 'mode' | 'singleplayer' | 'multiplayer';
@@ -104,7 +104,7 @@ export default function HomeScreen() {
             )}
             <View style={styles.logoContainer}>
               <LinearGradient colors={[Colors.gold, '#8B6914']} style={styles.logoGradient}>
-                <Ionicons name="compass-outline" size={36} color={Colors.darkBg} />
+                <Ionicons name="sync-outline" size={36} color={Colors.darkBg} />
               </LinearGradient>
             </View>
             <Text style={styles.titleAr}>دوّار</Text>
