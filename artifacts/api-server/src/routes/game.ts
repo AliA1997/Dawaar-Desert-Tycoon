@@ -23,14 +23,14 @@ const router: IRouter = Router();
 
 // POST /api/games - Create new game
 router.post('/', (req, res) => {
-  const { playerName, playerId, token } = req.body;
+  const { playerName, playerId, token, boardId } = req.body;
   if (!playerName || !playerId || !token) {
     return res.status(400).json({ error: 'playerName, playerId, and token are required' });
   }
   let gameId = generateGameId();
   while (getGame(gameId)) gameId = generateGameId();
 
-  const state = createGame(gameId, playerName, playerId, token);
+  const state = createGame(gameId, playerName, playerId, token, boardId ?? undefined);
   setGame(gameId, state);
   res.status(201).json({ gameId: state.gameId, status: state.status, players: state.players });
 });

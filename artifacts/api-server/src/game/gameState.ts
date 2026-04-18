@@ -1,4 +1,5 @@
-import { BOARD, CHANCE_CARDS, COMMUNITY_CARDS } from './board.js';
+import { BOARD, CHANCE_CARDS, COMMUNITY_CARDS, type BoardSpace } from './board.js';
+import { CHALLENGE_BOARDS } from './challengeBoards.js';
 
 export type GameStatus = 'waiting' | 'playing' | 'finished';
 
@@ -57,6 +58,7 @@ export interface PendingTaxChoice {
 
 export interface GameState {
   gameId: string;
+  boardId?: string;
   status: GameStatus;
   players: Player[];
   board: BoardProperty[];
@@ -74,8 +76,8 @@ export interface GameState {
 const PLAYER_COLORS = ['#C0392B', '#2980B9', '#27AE60', '#8E44AD', '#F39C12', '#1ABC9C'];
 const STARTING_MONEY = 15000;
 
-export function createInitialBoard(): BoardProperty[] {
-  return BOARD.map(space => ({
+export function createInitialBoard(sourceBoard?: BoardSpace[]): BoardProperty[] {
+  return (sourceBoard ?? BOARD).map(space => ({
     index: space.index,
     name: space.name,
     nameAr: space.nameAr,
@@ -86,6 +88,8 @@ export function createInitialBoard(): BoardProperty[] {
     hotelCost: space.hotelCost,
     mortgageValue: space.mortgageValue,
     colorGroup: space.colorGroup,
+    taxAmount: space.taxAmount,
+    railroadRent: space.railroadRent,
     ownerId: null,
     houses: 0,
     hotel: false,
@@ -93,7 +97,7 @@ export function createInitialBoard(): BoardProperty[] {
   }));
 }
 
-export function createGame(gameId: string, playerName: string, playerId: string, token: string): GameState {
+export function createGame(gameId: string, playerName: string, playerId: string, token: string, boardId?: string): GameState {
   const player: Player = {
     id: playerId,
     name: playerName,
@@ -108,11 +112,13 @@ export function createGame(gameId: string, playerName: string, playerId: string,
     doublesCount: 0,
   };
 
+  const sourceBoard = boardId ? CHALLENGE_BOARDS[boardId] : undefined;
   return {
     gameId,
+    boardId,
     status: 'waiting',
     players: [player],
-    board: createInitialBoard(),
+    board: createInitialBoard(sourceBoard),
     currentPlayerId: null,
     diceRoll: null,
     hasRolled: false,
@@ -286,7 +292,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 10, inJail: true, jailTurns: 0 } : p);
     logs.push({ message: `${player.name} is sent to jail!`, timestamp: new Date().toISOString() });
   } else if (landedSpace.type === 'tax') {
-    const flat = (BOARD[newPosition] as any).taxAmount ?? 0;
+    const flat = (newBoard[newPosition] as any).taxAmount ?? (landedSpace as any).taxAmount ?? 0;
     const currentPlayer = newPlayers.find(p => p.id === playerId)!;
     const netWorth = computeNetWorth(currentPlayer, newBoard);
     const percent = Math.floor(netWorth * 0.1);

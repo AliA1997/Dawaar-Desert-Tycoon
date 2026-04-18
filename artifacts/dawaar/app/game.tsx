@@ -133,7 +133,7 @@ export default function GameScreen() {
   const [diceAnimating, setDiceAnimating] = useState(false);
   const [logFilter, setLogFilter] = useState<'all' | 'rent' | 'cards' | 'buildings' | 'trades'>('all');
   const [showTaxModal, setShowTaxModal] = useState(false);
-  const [bankruptToast, setBankruptToast] = useState<string | null>(null);
+  const [bankruptModal, setBankruptModal] = useState<{ name: string; color: string; isMe: boolean } | null>(null);
   const prevBankruptRef = useRef<Set<string>>(new Set());
 
   // Movement tracking
@@ -291,10 +291,8 @@ export default function GameScreen() {
     gameState.players.forEach(p => {
       if (p.isBankrupt && !prevBankruptRef.current.has(p.id)) {
         prevBankruptRef.current.add(p.id);
-        const label = p.id === myPlayerId ? 'You are bankrupt!' : `${p.name} is bankrupt!`;
-        setBankruptToast(label);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setTimeout(() => setBankruptToast(null), 4000);
+        setBankruptModal({ name: p.name, color: p.color, isMe: p.id === myPlayerId });
       }
     });
   }, [gameState?.players.map(p => `${p.id}:${p.isBankrupt}`).join(',')]);
@@ -1217,13 +1215,34 @@ export default function GameScreen() {
         </View>
       </Modal>
 
-      {/* ─── Bankruptcy Toast ─────────────────────────────────────────────── */}
-      {bankruptToast && (
-        <View style={gameStyles.bankruptToast} pointerEvents="none">
-          <Ionicons name="skull" size={18} color="#EF4444" />
-          <Text style={gameStyles.bankruptToastText}>{bankruptToast}</Text>
+      {/* ─── Bankruptcy Modal ─────────────────────────────────────────────── */}
+      <Modal
+        visible={!!bankruptModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBankruptModal(null)}
+      >
+        <View style={gameStyles.bankruptOverlay}>
+          <Animated.View style={gameStyles.bankruptCard}>
+            <View style={[gameStyles.bankruptColorBar, { backgroundColor: bankruptModal?.color ?? '#EF4444' }]} />
+            <Text style={gameStyles.bankruptSkull}>💀</Text>
+            <Text style={gameStyles.bankruptTitle}>
+              {bankruptModal?.isMe ? 'You are Bankrupt!' : `${bankruptModal?.name} is Bankrupt!`}
+            </Text>
+            <Text style={gameStyles.bankruptSub}>
+              {bankruptModal?.isMe
+                ? 'All your properties have been returned to the market.'
+                : `${bankruptModal?.name}'s properties have been returned to the market.`}
+            </Text>
+            <TouchableOpacity
+              style={gameStyles.bankruptDismissBtn}
+              onPress={() => setBankruptModal(null)}
+            >
+              <Text style={gameStyles.bankruptDismissText}>Continue</Text>
+            </TouchableOpacity>
+          </Animated.View>
         </View>
-      )}
+      </Modal>
 
     </View>
   );
@@ -2351,25 +2370,66 @@ const gameStyles = StyleSheet.create({
   },
 
   /* ── Bankruptcy toast ── */
-  bankruptToast: {
-    position: 'absolute',
-    top: 120,
-    left: 24,
-    right: 24,
-    flexDirection: 'row',
+  bankruptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.78)',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(239,68,68,0.15)',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#EF444488',
+    justifyContent: 'center',
+    padding: 32,
   },
-  bankruptToastText: {
+  bankruptCard: {
+    width: '100%',
+    backgroundColor: '#0D1826',
+    borderRadius: 24,
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#EF444488',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  bankruptColorBar: {
+    width: '100%',
+    height: 6,
+  },
+  bankruptSkull: {
+    fontSize: 52,
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  bankruptTitle: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 20,
+  },
+  bankruptSub: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  bankruptDismissBtn: {
+    backgroundColor: '#EF444422',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EF444466',
+    paddingVertical: 12,
+    paddingHorizontal: 36,
+    marginBottom: 24,
+  },
+  bankruptDismissText: {
     fontSize: 15,
     fontFamily: 'Inter_700Bold',
     color: '#EF4444',
-    flex: 1,
   },
 
   /* ── Confirmation / Game-Over modals ── */
