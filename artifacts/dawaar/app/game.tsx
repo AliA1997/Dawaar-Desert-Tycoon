@@ -7,7 +7,6 @@ import {
   ScrollView,
   Platform,
   Modal,
-  Alert,
   FlatList,
   Image,
 } from 'react-native';
