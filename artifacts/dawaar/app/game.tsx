@@ -157,6 +157,9 @@ export default function GameScreen() {
   const [showSubscribe, setShowSubscribe] = useState(false);
   const [showTrade, setShowTrade] = useState(false);
   const [doublesGranted, setDoublesGranted] = useState(false);
+  const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showGameOver, setShowGameOver] = useState(false);
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -344,12 +347,7 @@ export default function GameScreen() {
     if (!gameState) {
       router.replace('/');
     } else if (gameState.status === 'finished' && gameState.winnerId) {
-      const winner = gameState.players.find(p => p.id === gameState.winnerId);
-      Alert.alert(
-        'Game Over!',
-        `${winner?.name} wins the game!`,
-        [{ text: 'Back to Home', onPress: () => { leaveGame(); router.replace('/'); } }]
-      );
+      setShowGameOver(true);
     }
   }, [gameState?.status]);
 
@@ -369,29 +367,20 @@ export default function GameScreen() {
     }
   };
 
-  const handleEndTurn = () => {
-    Alert.alert(
-      'End Turn',
-      'Are you sure you want to end your turn?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'End Turn',
-          onPress: async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            await endTurn();
-            if (!isSubscribed) {
-              turnCountRef.current += 1;
-              if (turnCountRef.current >= nextInterstitialRef.current) {
-                setShowInterstitial(true);
-                interstitialGapIdxRef.current = (interstitialGapIdxRef.current + 1) % INTERSTITIAL_GAPS.length;
-                nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current];
-              }
-            }
-          },
-        },
-      ]
-    );
+  const handleEndTurn = () => setShowEndTurnConfirm(true);
+
+  const confirmEndTurn = async () => {
+    setShowEndTurnConfirm(false);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await endTurn();
+    if (!isSubscribed) {
+      turnCountRef.current += 1;
+      if (turnCountRef.current >= nextInterstitialRef.current) {
+        setShowInterstitial(true);
+        interstitialGapIdxRef.current = (interstitialGapIdxRef.current + 1) % INTERSTITIAL_GAPS.length;
+        nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current];
+      }
+    }
   };
 
   const handleBuy = async () => {
@@ -450,12 +439,7 @@ export default function GameScreen() {
     await payJail();
   };
 
-  const handleLeave = () => {
-    Alert.alert('Leave Game', 'Are you sure? The game will continue without you.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Leave', style: 'destructive', onPress: () => { leaveGame(); router.replace('/'); } },
-    ]);
-  };
+  const handleLeave = () => setShowLeaveConfirm(true);
 
 
   return (
@@ -1168,6 +1152,67 @@ export default function GameScreen() {
                 </Text>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── End Turn Confirmation Modal ──────────────────────────────────── */}
+      <Modal visible={showEndTurnConfirm} transparent animationType="fade" onRequestClose={() => setShowEndTurnConfirm(false)}>
+        <View style={gameStyles.confirmOverlay}>
+          <View style={gameStyles.confirmBox}>
+            <Ionicons name="chevron-forward-circle" size={36} color={Colors.gold} style={{ marginBottom: 10 }} />
+            <Text style={gameStyles.confirmTitle}>End Turn</Text>
+            <Text style={gameStyles.confirmMsg}>Are you sure you want to end your turn?</Text>
+            <View style={gameStyles.confirmBtns}>
+              <TouchableOpacity style={gameStyles.confirmCancelBtn} onPress={() => setShowEndTurnConfirm(false)}>
+                <Text style={gameStyles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={gameStyles.confirmOkBtn} onPress={confirmEndTurn}>
+                <Text style={gameStyles.confirmOkText}>End Turn</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Leave Game Confirmation Modal ────────────────────────────────── */}
+      <Modal visible={showLeaveConfirm} transparent animationType="fade" onRequestClose={() => setShowLeaveConfirm(false)}>
+        <View style={gameStyles.confirmOverlay}>
+          <View style={gameStyles.confirmBox}>
+            <Ionicons name="exit-outline" size={36} color="#EF4444" style={{ marginBottom: 10 }} />
+            <Text style={gameStyles.confirmTitle}>Leave Game</Text>
+            <Text style={gameStyles.confirmMsg}>Are you sure? The game will continue without you.</Text>
+            <View style={gameStyles.confirmBtns}>
+              <TouchableOpacity style={gameStyles.confirmCancelBtn} onPress={() => setShowLeaveConfirm(false)}>
+                <Text style={gameStyles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[gameStyles.confirmOkBtn, { backgroundColor: '#EF4444' }]} onPress={() => { leaveGame(); router.replace('/'); }}>
+                <Text style={gameStyles.confirmOkText}>Leave</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Game Over Modal ───────────────────────────────────────────────── */}
+      <Modal visible={showGameOver} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={gameStyles.confirmOverlay}>
+          <View style={gameStyles.confirmBox}>
+            <Text style={{ fontSize: 44, marginBottom: 8 }}>🏆</Text>
+            <Text style={gameStyles.confirmTitle}>Game Over!</Text>
+            {gameState?.winnerId && (
+              <Text style={gameStyles.confirmMsg}>
+                {gameState.players.find(p => p.id === gameState.winnerId)?.name ?? 'Someone'} wins the game!
+              </Text>
+            )}
+            <View style={gameStyles.confirmBtns}>
+              <TouchableOpacity
+                style={[gameStyles.confirmOkBtn, { flex: 1 }]}
+                onPress={() => { setShowGameOver(false); leaveGame(); router.replace('/'); }}
+              >
+                <Text style={gameStyles.confirmOkText}>Back to Home</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -2325,6 +2370,71 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#EF4444',
     flex: 1,
+  },
+
+  /* ── Confirmation / Game-Over modals ── */
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmBox: {
+    backgroundColor: '#1A2540',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.25)',
+  },
+  confirmTitle: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    color: '#F0E6C8',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  confirmMsg: {
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  confirmBtns: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  confirmCancelText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#9CA3AF',
+  },
+  confirmOkBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#D4AF37',
+  },
+  confirmOkText: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#0D1B2A',
   },
 });
 
