@@ -66,7 +66,9 @@ artifacts-monorepo/
 │   │   └── src/game/       # Game engine: board, state machine, store
 │   └── dawaar/             # Expo React Native app
 │       ├── app/            # Expo Router pages: index, lobby, game, privacy
-│       ├── components/     # SubscribeModal, TradeModal, etc.
+│       ├── components/     # Board.tsx, PropertyCard.tsx, SubscribeModal, TradeModal
+│       │                   #   Board.tsx    — BoardCell + GameBoard (memoized)
+│       │                   #   PropertyCard.tsx — property detail/action card
 │       ├── context/        # GameContext with full game state + API calls
 │       ├── lib/            # revenuecat.tsx — real RC integration
 │       └── constants/      # Theme colors

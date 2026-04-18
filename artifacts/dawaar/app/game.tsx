@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Modal,
   Alert,
   FlatList,
-  Dimensions,
   Image,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
@@ -35,26 +34,13 @@ import type { BoardProperty, Player } from '@/context/GameContext';
 import { useSubscription } from '@/lib/revenuecat';
 import SubscribeModal from '@/components/SubscribeModal';
 import TradeModal from '@/components/TradeModal';
+import { GameBoard, GROUP_COLORS } from '@/components/Board';
+import PropertyCard from '@/components/PropertyCard';
 
 const DICE_GIF = require('../assets/dice.gif');
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// Full-width board: fill the mobile screen horizontally, cap height so UI fits below
-const BOARD_SIZE = Math.round(Math.min(SCREEN_WIDTH, SCREEN_HEIGHT - 210));
-const CS  = Math.round(BOARD_SIZE / 12);       // regular cell short side
-const CS2 = Math.round(CS * 1.5);             // corner / long side
-const BOARD_ACTUAL = CS * 9 + CS2 * 2;        // true pixel size (accounts for rounding)
-
-const GROUP_COLORS: Record<string, string> = {
-  brown: '#8B4513',
-  lightblue: '#38BDF8',
-  pink: '#EC4899',
-  orange: '#F97316',
-  red: '#EF4444',
-  yellow: '#EAB308',
-  green: '#22C55E',
-  darkblue: '#3B82F6',
-};
+// Fires at cumulative turns [4, 9, 16, 20, 25, 32…] (+4, +5, +7 cycling)
+const INTERSTITIAL_GAPS = [4, 5, 7] as const;
 
 function DiceDisplay({ dice }: { dice: number[] | null }) {
   if (!dice || dice.length === 0) return null;
@@ -83,660 +69,6 @@ const diceStyles = StyleSheet.create({
     borderColor: Colors.gold,
   },
   face: { fontSize: 28, color: Colors.darkBg },
-});
-
-type CellOrientation = 'bottom' | 'top' | 'left' | 'right' | 'corner';
-
-const BoardCell = memo(function BoardCell({
-  space,
-  players,
-  w,
-  h,
-  orientation = 'bottom',
-  isHighlighted = false,
-  onLongPress,
-}: {
-  space: BoardProperty;
-  players: Player[];
-  w: number;
-  h: number;
-  orientation?: CellOrientation;
-  isHighlighted?: boolean;
-  onLongPress?: () => void;
-}) {
-  const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
-  const ownerPlayer = space.ownerId ? players.find(p => p.id === space.ownerId) : null;
-  const groupColor = space.colorGroup ? GROUP_COLORS[space.colorGroup] : null;
-
-  const shortName = (space.type === 'property' || space.type === 'railroad' || space.type === 'utility')
-    ? space.name.split(',')[0]
-    : null;
-
-  // Color bar — outer edge of the board
-  const barEdge: object = orientation === 'top'
-    ? { top: 0,    left: 0, right: 0,  height: 6 }
-    : orientation === 'right'  ? { right: 0,  top: 0, bottom: 0, width: 6  }
-    : orientation === 'left'   ? { left: 0,   top: 0, bottom: 0, width: 6  }
-    : /* bottom / corner */      { bottom: 0, left: 0, right: 0,  height: 6 };
-
-  // Text rotation so names read outward from board edge
-  const rot = orientation === 'bottom' ? '-90deg'
-    : orientation === 'top' ? '90deg'
-    : '0deg';
-
-  const specialLabel: Record<string, string> = {
-    go: '▶GO', jail: '⛓', free_parking: 'P', go_to_jail: '🔒',
-    chance: '?', community: '♡', tax: '$', railroad: '🚂', utility: '⚡',
-  };
-
-  const isPortrait = orientation === 'bottom' || orientation === 'top';
-
-  // Ownership tint on cell background
-  const cellBg = ownerPlayer
-    ? ownerPlayer.color + '28'
-    : '#07101D';
-
-  return (
-    <TouchableOpacity
-      activeOpacity={onLongPress ? 0.75 : 1}
-      onLongPress={onLongPress}
-      delayLongPress={350}
-      style={[cellStyles.cell, { width: w, height: h, backgroundColor: cellBg }]}
-    >
-      {/* Property color band — outer edge */}
-      {groupColor && (
-        <View style={[cellStyles.colorBar, barEdge, { backgroundColor: groupColor }]} />
-      )}
-
-      {/* City / space name */}
-      {shortName ? (
-        <View style={[
-          cellStyles.labelWrap,
-          isPortrait
-            ? { width: h, height: w, transform: [{ rotate: rot }] }
-            : { width: w, height: h },
-        ]}>
-          <Text style={[cellStyles.nameText, ownerPlayer ? { color: ownerPlayer.color } : {}]}
-                numberOfLines={1} adjustsFontSizeToFit>
-            {shortName}
-          </Text>
-        </View>
-      ) : (
-        <Text style={cellStyles.typeIcon}>{specialLabel[space.type] ?? ''}</Text>
-      )}
-
-      {/* Houses (green blocks) / Hotel (red block) */}
-      {(space.houses > 0 || space.hotel) && (
-        <View style={cellStyles.buildingsRow}>
-          {space.hotel
-            ? <View style={cellStyles.hotelBlock} />
-            : Array.from({ length: space.houses }).map((_, i) => (
-                <View key={i} style={cellStyles.houseBlock} />
-              ))
-          }
-        </View>
-      )}
-
-      {/* Owner badge — small colored circle with player initial */}
-      {ownerPlayer && (
-        <View style={[cellStyles.ownerBadge, { backgroundColor: ownerPlayer.color }]}>
-          <Text style={cellStyles.ownerInitial}>{ownerPlayer.name[0]}</Text>
-        </View>
-      )}
-
-      {/* Player tokens */}
-      {playersHere.length > 0 && (
-        <View style={cellStyles.playersRow}>
-          {playersHere.slice(0, 3).map(p => (
-            <View key={p.id} style={[cellStyles.playerDot, { backgroundColor: p.color }]} />
-          ))}
-        </View>
-      )}
-
-      {/* Movement highlight overlay */}
-      {isHighlighted && <View style={cellStyles.highlightOverlay} />}
-    </TouchableOpacity>
-  );
-});
-
-const cellStyles = StyleSheet.create({
-  cell: {
-    borderWidth: 0.5,
-    borderColor: 'rgba(201,168,76,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  colorBar: {
-    position: 'absolute',
-  },
-  labelWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nameText: {
-    fontSize: 6,
-    fontFamily: 'Inter_600SemiBold',
-    color: Colors.warmCream,
-    textAlign: 'center',
-    letterSpacing: 0.1,
-  },
-  typeIcon: {
-    fontSize: 9,
-    color: Colors.warmCream,
-    opacity: 0.75,
-  },
-  buildingsRow: {
-    position: 'absolute',
-    top: 7,
-    left: 1,
-    right: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  houseBlock: {
-    width: 4,
-    height: 5,
-    borderRadius: 1,
-    backgroundColor: '#22C55E',
-  },
-  hotelBlock: {
-    width: 8,
-    height: 5,
-    borderRadius: 1,
-    backgroundColor: '#EF4444',
-  },
-  ownerBadge: {
-    position: 'absolute',
-    bottom: 1,
-    right: 1,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  ownerInitial: {
-    fontSize: 5,
-    color: 'white',
-    fontFamily: 'Inter_700Bold',
-  },
-  playersRow: {
-    position: 'absolute',
-    flexDirection: 'row',
-    bottom: 1,
-    left: 1,
-    gap: 1,
-  },
-  playerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    borderWidth: 0.5,
-    borderColor: Colors.warmCream,
-  },
-  highlightOverlay: {
-    position: 'absolute',
-    inset: 0,
-    backgroundColor: 'rgba(201,168,76,0.45)',
-    borderWidth: 1.5,
-    borderColor: Colors.gold,
-  },
-});
-
-const GameBoard = memo(function GameBoard({
-  board, players, highlightPos, onCellLongPress,
-}: {
-  board: BoardProperty[];
-  players: Player[];
-  highlightPos?: number | null;
-  onCellLongPress?: (space: BoardProperty) => void;
-}) {
-  const bottomRow = board.slice(0, 11);
-  const rightCol  = [...board.slice(11, 20)].reverse();
-  const topRow    = [...board.slice(20, 31)].reverse();
-  const leftCol   = board.slice(31, 40);
-
-  return (
-    <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
-
-      {/* Center logo */}
-      <View style={boardStyles.center}>
-        <Text style={boardStyles.centerTitleAr}>دوّار</Text>
-        <Text style={boardStyles.centerTitle}>DAWAAR</Text>
-        <LinearGradient colors={[Colors.gold + '18', 'transparent']} style={boardStyles.centerGlow} />
-      </View>
-
-      {/* ── Bottom row ── */}
-      <View style={[boardStyles.row, { bottom: 0, left: 0, height: CS2 }]}>
-        {bottomRow.map((space, i) => {
-          const isC = i === 0 || i === 10;
-          return (
-            <BoardCell key={space.index} space={space} players={players}
-              w={isC ? CS2 : CS} h={CS2}
-              orientation={isC ? 'corner' : 'bottom'}
-              isHighlighted={highlightPos === space.index}
-              onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
-          );
-        })}
-      </View>
-
-      {/* ── Right column ── */}
-      <View style={[boardStyles.col, { right: 0, top: CS2, width: CS2 }]}>
-        {rightCol.map(space => (
-          <BoardCell key={space.index} space={space} players={players}
-            w={CS2} h={CS} orientation="right"
-            isHighlighted={highlightPos === space.index}
-            onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
-        ))}
-      </View>
-
-      {/* ── Top row ── */}
-      <View style={[boardStyles.row, { top: 0, left: 0, height: CS2 }]}>
-        {topRow.map((space, i) => {
-          const isC = i === 0 || i === 10;
-          return (
-            <BoardCell key={space.index} space={space} players={players}
-              w={isC ? CS2 : CS} h={CS2}
-              orientation={isC ? 'corner' : 'top'}
-              isHighlighted={highlightPos === space.index}
-              onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
-          );
-        })}
-      </View>
-
-      {/* ── Left column ── */}
-      <View style={[boardStyles.col, { left: 0, top: CS2, width: CS2 }]}>
-        {leftCol.map(space => (
-          <BoardCell key={space.index} space={space} players={players}
-            w={CS2} h={CS} orientation="left"
-            isHighlighted={highlightPos === space.index}
-            onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
-        ))}
-      </View>
-    </View>
-  );
-});
-
-const boardStyles = StyleSheet.create({
-  board: {
-    position: 'relative',
-    backgroundColor: '#07101D',
-    borderWidth: 2,
-    borderColor: Colors.gold + '55',
-    borderRadius: 3,
-  },
-  row: {
-    position: 'absolute',
-    flexDirection: 'row',
-  },
-  col: {
-    position: 'absolute',
-    flexDirection: 'column',
-  },
-  center: {
-    position: 'absolute',
-    top: CS2,
-    left: CS2,
-    right: CS2,
-    bottom: CS2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerTitleAr: {
-    fontSize: Math.round(CS * 1.4),
-    fontFamily: 'Inter_700Bold',
-    color: Colors.gold,
-  },
-  centerTitle: {
-    fontSize: Math.round(CS * 0.45),
-    fontFamily: 'Inter_700Bold',
-    color: Colors.gold + '70',
-    letterSpacing: 4,
-  },
-  centerGlow: {
-    position: 'absolute',
-    inset: 0,
-    borderRadius: 8,
-  },
-});
-
-function PropertyCard({ property, onClose }: { property: BoardProperty; onClose: () => void }) {
-  const { myPlayer, buyProperty, buildHouse, sellHouse, mortgageProperty, gameState, myPlayerId } = useGame();
-
-  if (!property) return null;
-
-  const isOwner = property.ownerId === myPlayerId;
-  const canBuy = !property.ownerId && property.price && myPlayer && myPlayer.money >= property.price;
-  const groupColor = property.colorGroup ? GROUP_COLORS[property.colorGroup] : Colors.gold;
-
-  const handleBuy = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await buyProperty();
-    onClose();
-  };
-
-  const handleBuild = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await buildHouse(property.index);
-  };
-
-  const handleSell = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await sellHouse(property.index);
-  };
-
-  const handleMortgage = async (action: 'mortgage' | 'unmortgage') => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await mortgageProperty(property.index, action);
-  };
-
-  const ownerPlayer = property.ownerId ? gameState?.players.find(p => p.id === property.ownerId) : null;
-
-  return (
-    <View style={propStyles.card}>
-      <View style={[propStyles.header, { backgroundColor: groupColor }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={propStyles.headerName}>{property.name}</Text>
-          <Text style={propStyles.headerNameAr}>{property.nameAr}</Text>
-          {/* House / hotel badge */}
-          {(property.houses > 0 || property.hotel) && (
-            <View style={propStyles.headerBuildRow}>
-              {property.hotel ? (
-                <View style={propStyles.headerHotelBadge}>
-                  <Text style={propStyles.headerBuildText}>🏨 Hotel</Text>
-                </View>
-              ) : (
-                <View style={propStyles.headerHouseBadge}>
-                  {Array.from({ length: property.houses }).map((_, i) => (
-                    <View key={i} style={propStyles.headerHousePip} />
-                  ))}
-                  <Text style={propStyles.headerBuildText}> {property.houses} House{property.houses > 1 ? 's' : ''}</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-        <TouchableOpacity onPress={onClose} style={propStyles.closeBtn}>
-          <Ionicons name="close" size={20} color="white" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={propStyles.body}>
-        {property.price && (
-          <View style={propStyles.priceRow}>
-            <Text style={propStyles.price}>{property.price.toLocaleString()} DHS</Text>
-            {property.isMortgaged && <Text style={propStyles.mortgagedBadge}>MORTGAGED</Text>}
-          </View>
-        )}
-
-        {ownerPlayer && (
-          <View style={[propStyles.ownerBadge, { backgroundColor: ownerPlayer.color + '22', borderColor: ownerPlayer.color + '44' }]}>
-            <View style={[propStyles.ownerDot, { backgroundColor: ownerPlayer.color }]} />
-            <Text style={propStyles.ownerText}>Owned by {ownerPlayer.name}</Text>
-          </View>
-        )}
-
-        {property.houses > 0 && !property.hotel && (
-          <Text style={propStyles.buildInfo}>{property.houses} house{property.houses > 1 ? 's' : ''} built</Text>
-        )}
-        {property.hotel && <Text style={propStyles.buildInfo}>Hotel built</Text>}
-
-        {property.rent && property.rent.length > 0 && (
-          <View style={propStyles.rentTable}>
-            <Text style={propStyles.rentTitle}>Rent</Text>
-            {['Base', '1 House', '2 Houses', '3 Houses', '4 Houses', 'Hotel'].map((label, i) => (
-              <View key={i} style={[propStyles.rentRow, i % 2 === 0 && propStyles.rentRowAlt]}>
-                <Text style={propStyles.rentLabel}>{label}</Text>
-                <Text style={propStyles.rentValue}>{property.rent![i]?.toLocaleString()} DHS</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {canBuy && (
-          <TouchableOpacity style={propStyles.buyBtn} onPress={handleBuy}>
-            <LinearGradient colors={[Colors.gold, '#A07830']} style={propStyles.buyBtnGrad}>
-              <Text style={propStyles.buyBtnText}>Buy for {property.price?.toLocaleString()} DHS</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-
-        {isOwner && property.type === 'property' && (
-          <View style={propStyles.ownerActions}>
-            {!property.hotel && !property.isMortgaged && (
-              <TouchableOpacity style={propStyles.buildBtn} onPress={handleBuild}>
-                <Ionicons name="add" size={16} color={Colors.darkBg} />
-                <Text style={propStyles.buildBtnText}>{property.houses < 4 ? 'Build House' : 'Build Hotel'}</Text>
-              </TouchableOpacity>
-            )}
-            {(property.houses > 0 || property.hotel) && (
-              <TouchableOpacity style={propStyles.sellBtn} onPress={handleSell}>
-                <Ionicons name="remove" size={16} color="white" />
-                <Text style={propStyles.sellBtnText}>
-                  Sell {property.hotel ? 'Hotel' : 'House'} (+{Math.floor((property.hotel ? (property.hotelCost ?? 1000) : (property.houseCost ?? 1000)) / 2).toLocaleString()} DHS)
-                </Text>
-              </TouchableOpacity>
-            )}
-            {!property.isMortgaged ? (
-              <TouchableOpacity style={propStyles.mortgageBtn} onPress={() => handleMortgage('mortgage')}>
-                <Text style={propStyles.mortgageBtnText}>Mortgage ({property.mortgageValue} DHS)</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={propStyles.mortgageBtn} onPress={() => handleMortgage('unmortgage')}>
-                <Text style={propStyles.mortgageBtnText}>Unmortgage</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-
-const propStyles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: 20,
-    overflow: 'hidden',
-    maxHeight: '85%',
-  },
-  header: {
-    padding: 16,
-    paddingTop: 20,
-    paddingBottom: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  headerName: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
-    color: 'white',
-  },
-  headerNameAr: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 16,
-    marginTop: 2,
-  },
-  headerBuildRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  headerHouseBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 3,
-  },
-  headerHotelBadge: {
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  headerHousePip: {
-    width: 8,
-    height: 10,
-    borderRadius: 2,
-    backgroundColor: '#22C55E',
-  },
-  headerBuildText: {
-    fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
-    color: 'white',
-  },
-  body: {
-    padding: 16,
-    gap: 12,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  price: {
-    fontSize: 22,
-    fontFamily: 'Inter_700Bold',
-    color: Colors.gold,
-  },
-  mortgagedBadge: {
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    color: '#EF4444',
-    backgroundColor: 'rgba(239,68,68,0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    letterSpacing: 0.5,
-  },
-  ownerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  ownerDot: { width: 10, height: 10, borderRadius: 5 },
-  ownerText: { fontSize: 13, fontFamily: 'Inter_500Medium', color: Colors.warmCream },
-  buildInfo: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-    color: '#22C55E',
-  },
-  rentTable: {
-    backgroundColor: Colors.darkBg,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.borderColor,
-  },
-  rentTitle: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    color: '#6B7280',
-    padding: 10,
-    paddingBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  rentRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  rentRowAlt: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  rentLabel: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: '#9CA3AF',
-  },
-  rentValue: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    color: Colors.warmCream,
-  },
-  buyBtn: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  buyBtnGrad: {
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  buyBtnText: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
-    color: Colors.darkBg,
-  },
-  ownerActions: {
-    gap: 8,
-  },
-  buildBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#22C55E',
-    borderRadius: 12,
-    paddingVertical: 12,
-  },
-  buildBtnText: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: Colors.darkBg,
-  },
-  mortgageBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.darkBg,
-    borderRadius: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderColor,
-  },
-  mortgageBtnText: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#9CA3AF',
-  },
-  sellBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#EF4444',
-    borderRadius: 12,
-    paddingVertical: 12,
-  },
-  sellBtnText: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    color: 'white',
-  },
 });
 
 // ─── Landing-card helpers ──────────────────────────────────────────────────────
@@ -832,8 +164,6 @@ export default function GameScreen() {
   // Subscription
   const { isSubscribed } = useSubscription();
 
-  // Interstitial turn tracking — fires at cumulative turns [4, 9, 16, 20, 25, 32…] (+4, +5, +7 cycling)
-  const INTERSTITIAL_GAPS = [4, 5, 7];
   const turnCountRef = useRef(0);
   const interstitialGapIdxRef = useRef(0);
   const nextInterstitialRef = useRef(INTERSTITIAL_GAPS[0]);
@@ -979,6 +309,38 @@ export default function GameScreen() {
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
+  const canBuyCurrentSpace = useMemo(() => {
+    if (!gameState || !myPlayer || !isMyTurn) return false;
+    const space = gameState.board[myPlayer.position];
+    const hasMoved = gameState.hasRolled || myPlayer.doublesCount > 0;
+    return !!(hasMoved && space &&
+      (space.type === 'property' || space.type === 'railroad' || space.type === 'utility') &&
+      !space.ownerId && space.price != null && myPlayer.money >= space.price);
+  }, [gameState, myPlayer, isMyTurn]);
+
+  const myBuildableProps = useMemo(() => {
+    if (!gameState || !myPlayer) return [];
+    return gameState.board.filter(s => {
+      if (s.type !== 'property' || !s.colorGroup || s.ownerId !== myPlayer.id) return false;
+      if (s.hotel) return false;
+      return gameState.board.filter(b => b.colorGroup === s.colorGroup).every(b => b.ownerId === myPlayer.id);
+    });
+  }, [gameState, myPlayer]);
+
+  const myPropsWithBuildings = useMemo(() => {
+    if (!gameState || !myPlayer) return [];
+    return gameState.board.filter(s =>
+      s.type === 'property' && s.ownerId === myPlayer.id && (s.houses > 0 || s.hotel)
+    );
+  }, [gameState, myPlayer]);
+
+  const onCellLongPress = useCallback((space: BoardProperty) => {
+    if (space.type === 'property' || space.type === 'railroad' || space.type === 'utility') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setSelectedProperty(space);
+    }
+  }, []);
+
   useEffect(() => {
     if (!gameState) {
       router.replace('/');
@@ -996,23 +358,6 @@ export default function GameScreen() {
 
   const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
   const mySpace = myPlayer ? gameState.board[myPlayer.position] : null;
-  // Allow buying even during doubles re-roll (doublesCount > 0 means player already moved this turn)
-  const hasMovedThisTurn = gameState.hasRolled || ((myPlayer?.doublesCount ?? 0) > 0);
-  const canBuyCurrentSpace = isMyTurn && hasMovedThisTurn && mySpace &&
-    (mySpace.type === 'property' || mySpace.type === 'railroad' || mySpace.type === 'utility') &&
-    !mySpace.ownerId && mySpace.price && myPlayer && myPlayer.money >= mySpace.price;
-
-  // Properties the current player can build houses/hotels on (owns full color group)
-  const myBuildableProps = myPlayer ? gameState.board.filter(s => {
-    if (s.type !== 'property' || !s.colorGroup || s.ownerId !== myPlayer.id) return false;
-    if (s.hotel) return false;
-    return gameState.board.filter(b => b.colorGroup === s.colorGroup).every(b => b.ownerId === myPlayer.id);
-  }) : [];
-
-  // Properties the current player owns that have buildings to sell
-  const myPropsWithBuildings = myPlayer ? gameState.board.filter(s =>
-    s.type === 'property' && s.ownerId === myPlayer.id && (s.houses > 0 || s.hotel)
-  ) : [];
 
   const handleRoll = async () => {
     if (!isMyTurn || gameState.hasRolled) return;
@@ -1152,12 +497,7 @@ export default function GameScreen() {
           board={gameState.board}
           players={gameState.players}
           highlightPos={highlightPos}
-          onCellLongPress={(space) => {
-            if (space.type === 'property' || space.type === 'railroad' || space.type === 'utility') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setSelectedProperty(space);
-            }
-          }}
+          onCellLongPress={onCellLongPress}
         />
       </View>
 

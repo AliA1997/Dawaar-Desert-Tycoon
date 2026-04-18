@@ -147,6 +147,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [lastDiceRoll, setLastDiceRoll] = useState<number[] | null>(null);
   const [isSinglePlayer, setIsSinglePlayer] = useState(false);
   const [npcPlayerIds, setNpcPlayerIds] = useState<string[]>([]);
+  const npcPlayerIdsRef = useRef<string[]>([]);
   const [npcThinking, setNpcThinking] = useState(false);
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [npcDifficulty, setNpcDifficulty] = useState<NpcDifficulty>('medium');
@@ -240,7 +241,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const currentId = gameState.currentPlayerId;
     if (!currentId) return;
 
-    const isNpc = npcPlayerIds.includes(currentId);
+    const isNpc = npcPlayerIdsRef.current.includes(currentId);
     if (!isNpc) return;
 
     // Already running for this state — don't double-trigger
@@ -282,9 +283,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           await delay(1000);
 
           // Difficulty-based reserve thresholds
-          const buyReserve  = npcDifficulty === 'easy' ? 2500 : npcDifficulty === 'hard' ? 800  : 1500;
+          const buyReserve   = npcDifficulty === 'easy' ? 2500 : npcDifficulty === 'hard' ? 800  : 1500;
           const buildReserve = npcDifficulty === 'easy' ? 3000 : npcDifficulty === 'hard' ? 1200 : 2000;
-          const mortgageThreshold = npcDifficulty === 'easy' ? 1500 : npcDifficulty === 'hard' ? 500 : 1000;
 
           // 4. Decide whether to buy the landed property
           const npcPlayer = currentState.players.find(p => p.id === currentId);
@@ -303,7 +303,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               const wouldCompleteOpponentGroup = landedSpace.colorGroup
                 ? (() => {
                     const groupSpaces = currentState.board.filter(s => s.colorGroup === landedSpace.colorGroup);
-                    const humanIds = currentState.players.filter(p => !npcPlayerIds.includes(p.id)).map(p => p.id);
+                    const humanIds = currentState.players.filter(p => !npcPlayerIdsRef.current.includes(p.id)).map(p => p.id);
                     return humanIds.some(hId => {
                       const humanOwned = groupSpaces.filter(s => s.ownerId === hId).length;
                       return humanOwned === groupSpaces.length - 1;
@@ -389,7 +389,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           // 5.6 NPC trading: if NPC owns 2 of 3 in a color group and a human has the missing one
           const npcForTrade = currentState.players.find(p => p.id === currentId);
           if (npcForTrade && npcForTrade.money > buildReserve * 1.5 && !currentState.pendingTrade && isSinglePlayer) {
-            const humanIds = currentState.players.filter(p => !npcPlayerIds.includes(p.id) && !p.isBankrupt).map(p => p.id);
+            const humanIds = currentState.players.filter(p => !npcPlayerIdsRef.current.includes(p.id) && !p.isBankrupt).map(p => p.id);
             const colorGroups = [...new Set(currentState.board.filter(s => s.type === 'property' && s.colorGroup).map(s => s.colorGroup!))];
             let tradeMade = false;
             for (const group of colorGroups) {
@@ -479,7 +479,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isSinglePlayer || !gameState || gameState.status !== 'playing') return;
     const currentId = gameState.currentPlayerId;
-    if (!currentId || !npcPlayerIds.includes(currentId)) return;
+    if (!currentId || !npcPlayerIdsRef.current.includes(currentId)) return;
     if (!gameState.hasRolled || npcBotRunningRef.current) return;
 
     const stallTimer = setTimeout(async () => {
@@ -512,6 +512,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const fullState = await api(`/games/${data.gameId}`);
       setIsSinglePlayer(false);
       setNpcPlayerIds([]);
+      npcPlayerIdsRef.current = [];
       attachToGame(fullState);
       return data.gameId;
     } catch (e: any) {
@@ -567,6 +568,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       setIsSinglePlayer(true);
       setNpcPlayerIds(npcIds);
+      npcPlayerIdsRef.current = npcIds;
       npcBotRunningRef.current = false;
       attachToGame(fullState);
 
@@ -600,6 +602,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const state = await api(`/games/${gameId}/join`, 'POST', { playerName: name, playerId, token });
       setIsSinglePlayer(false);
       setNpcPlayerIds([]);
+      npcPlayerIdsRef.current = [];
       attachToGame(state);
       return true;
     } catch (e: any) {
@@ -795,6 +798,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setMyPlayerId(savedGame.myPlayerId);
       setIsSinglePlayer(savedGame.isSinglePlayer);
       setNpcPlayerIds(savedGame.npcPlayerIds);
+      npcPlayerIdsRef.current = savedGame.npcPlayerIds;
       npcBotRunningRef.current = false;
       attachToGame(state);
       return true;
@@ -818,6 +822,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setIsSinglePlayer(false);
     setNpcPlayerIds([]);
+    npcPlayerIdsRef.current = [];
     npcBotRunningRef.current = false;
   }, [stopPolling]);
 
