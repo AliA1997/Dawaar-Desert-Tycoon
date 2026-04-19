@@ -1,17 +1,9 @@
 import React, { memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import Colors from '@/constants/colors';
 import type { BoardProperty, Player } from '@/context/GameContext';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-export const BOARD_SIZE = Math.round(Math.min(SCREEN_WIDTH, SCREEN_HEIGHT - 210));
-// 28-tile board: 6 regular cells + 2 corner cells per side
-// Board width = 6×CS + 2×CS2 = 6CS + 3CS = 9CS  →  CS = BOARD_SIZE / 9
-export const CS  = Math.round(BOARD_SIZE / 9);
-export const CS2 = Math.round(CS * 1.5);
-export const BOARD_ACTUAL = CS * 6 + CS2 * 2;
 
 export const GROUP_COLORS: Record<string, string> = {
   brown:     '#8B4513',
@@ -181,17 +173,27 @@ export const GameBoard = memo(function GameBoard({
   highlightPos?: number | null;
   onCellLongPress?: (space: BoardProperty) => void;
 }) {
+  const { width, height } = useWindowDimensions();
+
+  // Scale the board to fit the screen: respect width (16px side margins) and
+  // available height (380px reserved for top-bar + status + actions panel).
+  // Hard-cap at 440px so large tablets / desktop don't over-inflate the board.
+  const boardSize = Math.round(Math.min(width - 16, height - 380, 440));
+  const CS  = Math.round(boardSize / 9);
+  const CS2 = Math.round(CS * 1.5);
+  const BOARD_ACTUAL = CS * 6 + CS2 * 2;
+
   // 28-tile layout: corners at 0, 7, 14, 21 — 6 regular tiles per side
-  const bottomRow = board.slice(0, 8);               // pos 0–7  (GO → Jail)
-  const rightCol  = [...board.slice(8, 14)].reverse(); // pos 8–13 displayed top→bottom
-  const topRow    = [...board.slice(14, 22)].reverse(); // pos 14–21 displayed right→left
-  const leftCol   = board.slice(22, 28);             // pos 22–27 displayed top→bottom
+  const bottomRow = board.slice(0, 8);
+  const rightCol  = [...board.slice(8, 14)].reverse();
+  const topRow    = [...board.slice(14, 22)].reverse();
+  const leftCol   = board.slice(22, 28);
 
   return (
     <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
-      <View style={boardStyles.center}>
-        <Text style={boardStyles.centerTitleAr}>دوّار</Text>
-        <Text style={boardStyles.centerTitle}>DAWAAR</Text>
+      <View style={[boardStyles.center, { top: CS2, left: CS2, right: CS2, bottom: CS2 }]}>
+        <Text style={[boardStyles.centerTitleAr, { fontSize: Math.round(CS * 1.4) }]}>دوّار</Text>
+        <Text style={[boardStyles.centerTitle, { fontSize: Math.round(CS * 0.45) }]}>DAWAAR</Text>
         <LinearGradient colors={[Colors.gold + '18', 'transparent']} style={boardStyles.centerGlow} />
       </View>
 
@@ -254,16 +256,14 @@ const boardStyles = StyleSheet.create({
   col: { position: 'absolute', flexDirection: 'column' },
   center: {
     position: 'absolute',
-    top: CS2, left: CS2, right: CS2, bottom: CS2,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   centerTitleAr: {
-    fontSize: Math.round(CS * 1.4),
     fontFamily: 'Inter_700Bold',
     color: Colors.gold,
   },
   centerTitle: {
-    fontSize: Math.round(CS * 0.45),
     fontFamily: 'Inter_700Bold',
     color: Colors.gold + '70',
     letterSpacing: 4,
