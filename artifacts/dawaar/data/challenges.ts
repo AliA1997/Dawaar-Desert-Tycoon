@@ -1,64 +1,199 @@
-export interface Challenge {
+export interface CountryChallenge {
   id: string;
+  boardId: string;
   title: string;
   titleAr: string;
-  description: string;
-  countries: string[];
   flag: string;
-  color: string;
-  accentColor: string;
+  description: string;
   npcCount: number;
   rewardPoints: number;
 }
 
-export const CHALLENGES: Challenge[] = [
+export interface RegionChallenge {
+  id: string;
+  title: string;
+  titleAr: string;
+  description: string;
+  regionFlag: string;
+  color: string;
+  accentColor: string;
+  countries: CountryChallenge[];
+}
+
+export const REGION_CHALLENGES: RegionChallenge[] = [
   {
     id: 'gcc',
     title: 'GCC',
     titleAr: 'مجلس التعاون الخليجي',
-    description: 'Dominate the Gulf — from Dubai Downtown to Abu Dhabi and beyond. Compete across Saudi Arabia, UAE, Oman, and Qatar.',
-    countries: ['🇸🇦', '🇦🇪', '🇴🇲', '🇶🇦'],
-    flag: '🏙️',
+    description: 'Dominate the Gulf — from the sands of Oman to the towers of Dubai.',
+    regionFlag: '🏙️',
     color: '#1E3A5F',
     accentColor: '#C9A84C',
-    npcCount: 3,
-    rewardPoints: 1000,
+    countries: [
+      {
+        id: 'gcc_oman',
+        boardId: 'gcc_oman',
+        title: 'Oman',
+        titleAr: 'عُمان',
+        flag: '🇴🇲',
+        description: 'From the frankincense trade of Salalah to the Grand Mosque of Muscat.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'gcc_qatar',
+        boardId: 'gcc_qatar',
+        title: 'Qatar',
+        titleAr: 'قطر',
+        flag: '🇶🇦',
+        description: 'Rise through Lusail City, the Pearl, and all the way to downtown Doha.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'gcc_uae',
+        boardId: 'gcc_uae',
+        title: 'United Arab Emirates',
+        titleAr: 'الإمارات العربية المتحدة',
+        flag: '🇦🇪',
+        description: 'From the oasis of Al Ain to the DIFC towers — claim every emirate.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'gcc_ksa',
+        boardId: 'gcc_ksa',
+        title: 'Saudi Arabia',
+        titleAr: 'المملكة العربية السعودية',
+        flag: '🇸🇦',
+        description: 'Build your empire from Tabuk to Mecca — the heart of the Islamic world.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+    ],
   },
   {
     id: 'alsham',
     title: 'Al Sham',
     titleAr: 'بلاد الشام',
-    description: 'Journey through the ancient Levant — Petra to Beirut Corniche, Amman to Damascus. Jordan, Syria, and Lebanon await.',
-    countries: ['🇯🇴', '🇸🇾', '🇱🇧'],
-    flag: '🏛️',
+    description: 'Journey through the ancient Levant — from Petra to the Umayyad Mosque.',
+    regionFlag: '🏛️',
     color: '#1A3320',
     accentColor: '#4ADE80',
-    npcCount: 3,
-    rewardPoints: 1000,
+    countries: [
+      {
+        id: 'alsham_jordan',
+        boardId: 'alsham_jordan',
+        title: 'Jordan',
+        titleAr: 'الأردن',
+        flag: '🇯🇴',
+        description: 'Traverse Wadi Rum, Petra, and the Dead Sea coast down to Amman.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'alsham_lebanon',
+        boardId: 'alsham_lebanon',
+        title: 'Lebanon',
+        titleAr: 'لبنان',
+        flag: '🇱🇧',
+        description: "From Baalbek's Roman temples to the vibrant streets of Beirut Downtown.",
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'alsham_syria',
+        boardId: 'alsham_syria',
+        title: 'Syria',
+        titleAr: 'سوريا',
+        flag: '🇸🇾',
+        description: "Ancient Palmyra, Aleppo's souqs, and the grand Umayyad Mosque of Damascus.",
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+    ],
   },
   {
     id: 'northafrica',
     title: 'North Africa',
     titleAr: 'شمال أفريقيا',
-    description: 'Build your empire along the Nile and the Maghreb coast — from Casablanca to Cairo CBD, Algiers to Marrakech.',
-    countries: ['🇪🇬', '🇱🇾', '🇹🇳', '🇩🇿', '🇲🇦'],
-    flag: '🌍',
+    description: 'Build your empire along the Nile and the Maghreb coast.',
+    regionFlag: '🌍',
     color: '#3D1A00',
     accentColor: '#FB923C',
-    npcCount: 3,
-    rewardPoints: 1000,
+    countries: [
+      {
+        id: 'na_tunisia',
+        boardId: 'na_tunisia',
+        title: 'Tunisia',
+        titleAr: 'تونس',
+        flag: '🇹🇳',
+        description: "From Kairouan's holy city to Sidi Bou Said and the heart of Tunis.",
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'na_libya',
+        boardId: 'na_libya',
+        title: 'Libya',
+        titleAr: 'ليبيا',
+        flag: '🇱🇾',
+        description: 'From the UNESCO oasis of Ghadames to the Mediterranean coast of Tripoli.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'na_morocco',
+        boardId: 'na_morocco',
+        title: 'Morocco',
+        titleAr: 'المغرب',
+        flag: '🇲🇦',
+        description: "Chefchaouen's blue alleys, Marrakech's medina, and Casablanca's grandeur.",
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'na_algeria',
+        boardId: 'na_algeria',
+        title: 'Algeria',
+        titleAr: 'الجزائر',
+        flag: '🇩🇿',
+        description: "From Tlemcen's Islamic heritage and Ghardaia's M'Zab Valley to Algiers.",
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+      {
+        id: 'na_egypt',
+        boardId: 'na_egypt',
+        title: 'Egypt',
+        titleAr: 'مصر',
+        flag: '🇪🇬',
+        description: 'The temples of Luxor, Al-Azhar of Cairo, and the banks of the Nile.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+    ],
   },
   {
     id: 'iraq',
     title: 'Iraq',
     titleAr: 'العراق',
-    description: 'Rise through the land between two rivers — from Sulaymaniyah to Baghdad CBD, Karbala to Basra Port.',
-    countries: ['🇮🇶'],
-    flag: '🌊',
+    description: 'Rise through the land between two rivers — Baghdad to Basra.',
+    regionFlag: '🌊',
     color: '#1A1A3D',
     accentColor: '#818CF8',
-    npcCount: 3,
-    rewardPoints: 1000,
+    countries: [
+      {
+        id: 'iraq_main',
+        boardId: 'iraq',
+        title: 'Iraq',
+        titleAr: 'العراق',
+        flag: '🇮🇶',
+        description: 'From Sulaymaniyah to Baghdad CBD, Karbala to Basra Port.',
+        npcCount: 3,
+        rewardPoints: 1000,
+      },
+    ],
   },
 ];
 

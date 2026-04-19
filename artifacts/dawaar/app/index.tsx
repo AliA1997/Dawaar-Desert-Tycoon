@@ -9,7 +9,6 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Alert,
   Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,34 +47,18 @@ export default function HomeScreen() {
   };
 
   const handleSinglePlayer = async () => {
-    if (!playerName.trim()) {
-      Alert.alert('Enter your name', 'Please enter your name to continue');
-      return;
-    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const ok = await createSinglePlayerGame(playerName.trim(), selectedToken, npcCount, selectedDifficulty);
     if (ok) router.push('/game');
   };
 
   const handleCreate = async () => {
-    if (!playerName.trim()) {
-      Alert.alert('Enter your name', 'Please enter your name to continue');
-      return;
-    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const gameId = await createGame(playerName.trim(), selectedToken);
     if (gameId) router.push('/lobby');
   };
 
   const handleJoin = async () => {
-    if (!playerName.trim()) {
-      Alert.alert('Enter your name', 'Please enter your name to continue');
-      return;
-    }
-    if (!gameCode.trim()) {
-      Alert.alert('Enter game code', 'Please enter the 6-character game code');
-      return;
-    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const ok = await joinGame(gameCode.trim().toUpperCase(), playerName.trim(), selectedToken);
     if (ok) router.push('/lobby');
@@ -298,6 +281,7 @@ export default function HomeScreen() {
                 label="Start Game"
                 icon="play"
                 loading={isLoading}
+                disabled={!playerName.trim()}
                 onPress={handleSinglePlayer}
               />
             </View>
@@ -353,6 +337,7 @@ export default function HomeScreen() {
                 label={mpTab === 'create' ? 'Create Game' : 'Join Game'}
                 icon="arrow-forward"
                 loading={isLoading}
+                disabled={!playerName.trim() || (mpTab === 'join' && !gameCode.trim())}
                 onPress={mpTab === 'create' ? handleCreate : handleJoin}
               />
             </View>
@@ -382,8 +367,11 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 function NameInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.label}>Your Name</Text>
-      <View style={styles.inputContainer}>
+      <View style={styles.labelRow}>
+        <Text style={[styles.label, { marginBottom: 0 }]}>Your Name</Text>
+        {!value.trim() && <Text style={styles.requiredHint}>Required</Text>}
+      </View>
+      <View style={[styles.inputContainer, !value.trim() && styles.inputContainerRequired]}>
         <Ionicons name="person" size={18} color={Colors.gold} style={styles.inputIcon} />
         <TextInput
           style={styles.input}
@@ -424,19 +412,20 @@ function TokenPicker({ selected, onSelect }: { selected: string; onSelect: (t: s
   );
 }
 
-function ActionButton({ label, icon, loading, onPress }: { label: string; icon: string; loading: boolean; onPress: () => void }) {
+function ActionButton({ label, icon, loading, disabled, onPress }: { label: string; icon: string; loading: boolean; disabled?: boolean; onPress: () => void }) {
+  const isDisabled = loading || disabled;
   return (
-    <TouchableOpacity style={[styles.actionBtn, loading && styles.actionBtnDisabled]} onPress={onPress} disabled={loading}>
+    <TouchableOpacity style={[styles.actionBtn, isDisabled && styles.actionBtnDisabled]} onPress={onPress} disabled={isDisabled}>
       <LinearGradient
-        colors={loading ? ['#4B5563', '#374151'] : [Colors.gold, '#A07830']}
+        colors={isDisabled ? ['#4B5563', '#374151'] : [Colors.gold, '#A07830']}
         style={styles.actionBtnGrad}
       >
         {loading ? (
           <ActivityIndicator color={Colors.darkBg} size="small" />
         ) : (
           <>
-            <Text style={styles.actionBtnText}>{label}</Text>
-            <Ionicons name={icon as any} size={18} color={Colors.darkBg} />
+            <Text style={[styles.actionBtnText, disabled && { color: '#9CA3AF' }]}>{label}</Text>
+            <Ionicons name={icon as any} size={18} color={disabled ? '#9CA3AF' : Colors.darkBg} />
           </>
         )}
       </LinearGradient>
@@ -560,8 +549,11 @@ const styles = StyleSheet.create({
 
   // Inputs
   inputGroup: { marginBottom: 16 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   label: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#9CA3AF', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  requiredHint: { fontSize: 11, fontFamily: 'Inter_500Medium', color: '#EF4444', opacity: 0.8 },
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.darkBg, borderRadius: 12, borderWidth: 1, borderColor: Colors.borderColor, paddingHorizontal: 14 },
+  inputContainerRequired: { borderColor: 'rgba(239,68,68,0.4)' },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, height: 48, fontSize: 15, fontFamily: 'Inter_400Regular', color: Colors.warmCream },
   codeInput: { fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: 6, textTransform: 'uppercase' },

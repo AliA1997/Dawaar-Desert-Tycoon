@@ -157,7 +157,6 @@ export default function GameScreen() {
   const [showSubscribe, setShowSubscribe] = useState(false);
   const [showTrade, setShowTrade] = useState(false);
   const [doublesGranted, setDoublesGranted] = useState(false);
-  const [showEndTurnConfirm, setShowEndTurnConfirm] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -365,10 +364,7 @@ export default function GameScreen() {
     }
   };
 
-  const handleEndTurn = () => setShowEndTurnConfirm(true);
-
   const confirmEndTurn = async () => {
-    setShowEndTurnConfirm(false);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await endTurn();
     if (!isSubscribed) {
@@ -644,7 +640,7 @@ export default function GameScreen() {
               </TouchableOpacity>
             )}
             {gameState.hasRolled && (
-              <TouchableOpacity style={gameStyles.endBtn} onPress={handleEndTurn}>
+              <TouchableOpacity style={gameStyles.endBtn} onPress={confirmEndTurn}>
                 <View style={gameStyles.endBtnInner}>
                   <Ionicons name="chevron-forward-circle" size={20} color={Colors.warmCream} />
                   <Text style={gameStyles.endBtnText}>End Turn</Text>
@@ -1150,25 +1146,6 @@ export default function GameScreen() {
                 </Text>
               </>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ─── End Turn Confirmation Modal ──────────────────────────────────── */}
-      <Modal visible={showEndTurnConfirm} transparent animationType="fade" onRequestClose={() => setShowEndTurnConfirm(false)}>
-        <View style={gameStyles.confirmOverlay}>
-          <View style={gameStyles.confirmBox}>
-            <Ionicons name="chevron-forward-circle" size={36} color={Colors.gold} style={{ marginBottom: 10 }} />
-            <Text style={gameStyles.confirmTitle}>End Turn</Text>
-            <Text style={gameStyles.confirmMsg}>Are you sure you want to end your turn?</Text>
-            <View style={gameStyles.confirmBtns}>
-              <TouchableOpacity style={gameStyles.confirmCancelBtn} onPress={() => setShowEndTurnConfirm(false)}>
-                <Text style={gameStyles.confirmCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={gameStyles.confirmOkBtn} onPress={confirmEndTurn}>
-                <Text style={gameStyles.confirmOkText}>End Turn</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>

@@ -33,7 +33,7 @@ pnpm workspace monorepo using TypeScript. Contains the **Dawaar** app — a Midd
 - Long-press any board cell to open its property card
 - Log filter chips: All / Rent / Cards / Buildings / Trades
 - Bankruptcy toast overlay when a player goes bankrupt
-- End Turn confirmation dialog (Alert.alert)
+- End Turn: no confirmation dialog — tapping ends the turn immediately
 - PropertyCard header shows house pips / hotel badge prominently
 
 ## Board Color Groups — 28-tile board (most → least expensive)
