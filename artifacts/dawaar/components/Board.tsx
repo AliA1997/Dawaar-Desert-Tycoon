@@ -7,9 +7,11 @@ import type { BoardProperty, Player } from '@/context/GameContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 export const BOARD_SIZE = Math.round(Math.min(SCREEN_WIDTH, SCREEN_HEIGHT - 210));
-export const CS  = Math.round(BOARD_SIZE / 12);
+// 28-tile board: 6 regular cells + 2 corner cells per side
+// Board width = 6×CS + 2×CS2 = 6CS + 3CS = 9CS  →  CS = BOARD_SIZE / 9
+export const CS  = Math.round(BOARD_SIZE / 9);
 export const CS2 = Math.round(CS * 1.5);
-export const BOARD_ACTUAL = CS * 9 + CS2 * 2;
+export const BOARD_ACTUAL = CS * 6 + CS2 * 2;
 
 export const GROUP_COLORS: Record<string, string> = {
   brown:     '#8B4513',
@@ -179,10 +181,11 @@ export const GameBoard = memo(function GameBoard({
   highlightPos?: number | null;
   onCellLongPress?: (space: BoardProperty) => void;
 }) {
-  const bottomRow = board.slice(0, 11);
-  const rightCol  = [...board.slice(11, 20)].reverse();
-  const topRow    = [...board.slice(20, 31)].reverse();
-  const leftCol   = board.slice(31, 40);
+  // 28-tile layout: corners at 0, 7, 14, 21 — 6 regular tiles per side
+  const bottomRow = board.slice(0, 8);               // pos 0–7  (GO → Jail)
+  const rightCol  = [...board.slice(8, 14)].reverse(); // pos 8–13 displayed top→bottom
+  const topRow    = [...board.slice(14, 22)].reverse(); // pos 14–21 displayed right→left
+  const leftCol   = board.slice(22, 28);             // pos 22–27 displayed top→bottom
 
   return (
     <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
@@ -194,7 +197,7 @@ export const GameBoard = memo(function GameBoard({
 
       <View style={[boardStyles.row, { bottom: 0, left: 0, height: CS2 }]}>
         {bottomRow.map((space, i) => {
-          const isC = i === 0 || i === 10;
+          const isC = i === 0 || i === 7;
           return (
             <BoardCell key={space.index} space={space} players={players}
               w={isC ? CS2 : CS} h={CS2}
@@ -216,7 +219,7 @@ export const GameBoard = memo(function GameBoard({
 
       <View style={[boardStyles.row, { top: 0, left: 0, height: CS2 }]}>
         {topRow.map((space, i) => {
-          const isC = i === 0 || i === 10;
+          const isC = i === 0 || i === 7;
           return (
             <BoardCell key={space.index} space={space} players={players}
               w={isC ? CS2 : CS} h={CS2}

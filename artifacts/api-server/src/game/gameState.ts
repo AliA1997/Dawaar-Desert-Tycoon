@@ -274,7 +274,8 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
 
   // Move player
   const updatedPlayer = newPlayers.find(p => p.id === playerId)!;
-  let newPosition = (updatedPlayer.position + total) % 40;
+  const boardLen = newBoard.length;
+  let newPosition = (updatedPlayer.position + total) % boardLen;
   let moneyDelta = 0;
 
   // Passed GO
@@ -289,7 +290,8 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
 
   // Handle space effects
   if (landedSpace.type === 'go_to_jail') {
-    newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 10, inJail: true, jailTurns: 0 } : p);
+    const jailPos = newBoard.findIndex(s => s.type === 'jail');
+    newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: jailPos, inJail: true, jailTurns: 0 } : p);
     logs.push({ message: `${player.name} is sent to jail!`, timestamp: new Date().toISOString() });
   } else if (landedSpace.type === 'tax') {
     const flat = (newBoard[newPosition] as any).taxAmount ?? (landedSpace as any).taxAmount ?? 0;
@@ -375,8 +377,9 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     const newDoublesCount = (player.doublesCount ?? 0) + 1;
     if (newDoublesCount >= 3) {
       // Triple consecutive doubles → send to jail
+      const jailPosD = newBoard.findIndex(s => s.type === 'jail');
       newPlayers = newPlayers.map(p => p.id === playerId
-        ? { ...p, position: 10, inJail: true, jailTurns: 0, doublesCount: 0 }
+        ? { ...p, position: jailPosD, inJail: true, jailTurns: 0, doublesCount: 0 }
         : p);
       logs.push({ message: `${player.name} rolled doubles 3 times and is sent to jail!`, timestamp: new Date().toISOString() });
       finalHasRolled = true;
@@ -421,17 +424,27 @@ function applyCardAction(action: string, playerId: string, players: Player[], bo
     case 'go_to_go':
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 0, money: p.money + 2000 } : p);
       break;
-    case 'go_to_39':
-      if (player.position > 39) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 39 } : p);
+    case 'go_to_medina': {
+      const medinaPos = board.findIndex(s => s.name === 'Medina');
+      if (medinaPos >= 0) {
+        if (player.position > medinaPos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
+        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: medinaPos } : p);
+      }
       break;
-    case 'go_to_26':
-      if (player.position > 26) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 26 } : p);
+    }
+    case 'go_to_doha': {
+      const dohaPos = board.findIndex(s => s.name === 'Doha');
+      if (dohaPos >= 0) {
+        if (player.position > dohaPos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
+        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: dohaPos } : p);
+      }
       break;
-    case 'go_to_jail':
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 10, inJail: true, jailTurns: 0 } : p);
+    }
+    case 'go_to_jail': {
+      const jailPosC = board.findIndex(s => s.type === 'jail');
+      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: jailPosC, inJail: true, jailTurns: 0 } : p);
       break;
+    }
     case 'collect_500':
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 500 } : p);
       break;
@@ -467,16 +480,15 @@ function applyCardAction(action: string, playerId: string, players: Player[], bo
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money - 500 } : p);
       break;
     case 'nearest_railroad': {
-      const railroads = [5, 15, 25, 35];
+      const railroads = board.map((s, i) => s.type === 'railroad' ? i : -1).filter(i => i >= 0);
       const pos = player.position;
-      const nearest = railroads.find(r => r > pos) || railroads[0];
+      const nearest = railroads.find(r => r > pos) ?? railroads[0];
       if (nearest < pos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: nearest } : p);
       break;
     }
     case 'back_3':
-      // Correct board wrap: position 1 - 3 = position 38 (not 0)
-      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: (p.position - 3 + 40) % 40 } : p);
+      newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: (p.position - 3 + board.length) % board.length } : p);
       break;
   }
 

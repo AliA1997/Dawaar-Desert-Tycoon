@@ -11,8 +11,9 @@ pnpm workspace monorepo using TypeScript. Contains the **Dawaar** app — a Midd
 ### Features
 - Create & join multiplayer games via 6-character game code
 - Real-time synchronization via long-polling
-- 40-space board themed around iconic Arab world cities (Mecca, Medina, Dubai, Cairo, Gaza City, Jerusalem, Riyadh, Doha, Casablanca…)
-- Airlines: Emirates, Etihad Airways, Qatar Airways, Saudia (replaces generic railroads)
+- 28-space board themed around iconic Arab world cities, ordered by Islamic-faith-biased importance score
+- Importance scoring: Religious ×0.40 + Cultural ×0.30 + GDP ×0.20 + Historical ×0.10
+- Railways: Al-Buraq Express, Hejaz Railway, Al-Haramayn Express (3 rail lines)
 - Arabic-themed tokens: Camel, Falcon, Tiger, Panther, Gazelle, Lantern
 - Full Monopoly rules: buy properties, build houses/hotels, collect rent, chance/community cards
 - Jail, airlines, utilities
@@ -35,15 +36,22 @@ pnpm workspace monorepo using TypeScript. Contains the **Dawaar** app — a Midd
 - End Turn confirmation dialog (Alert.alert)
 - PropertyCard header shows house pips / hotel badge prominently
 
-## Board Color Groups (most → least expensive)
-- **Dark Blue** (most expensive): Mecca (4000 DHS), Medina (4000 DHS)
-- **Green**: Jerusalem, Dubai, Abu Dhabi
-- **Yellow**: Doha, Riyadh, Jeddah
-- **Red**: Casablanca, Gaza City, Cairo
-- **Orange**: Baghdad, Beirut, Amman
-- **Pink**: Kuwait City, Muscat, Damascus
-- **Light Blue**: Khartoum, Tripoli, Algiers
-- **Brown** (cheapest): Tunis, Sana'a
+## Board Color Groups — 28-tile board (most → least expensive)
+Prices driven by Islamic-faith-biased importance score (Religious 40% > Cultural 30% > GDP 20% > Historical 10%)
+
+| Group | Cities | Price range | Score |
+|-------|--------|-------------|-------|
+| **Dark Blue** (holiest) | Mecca (9.00), Medina (8.40) | 5,000 / 4,200 DHS | Highest |
+| **Green** | Jerusalem (8.20), Cairo (8.20) | 3,600 / 3,400 DHS | |
+| **Yellow** | Baghdad (7.70), Jeddah (7.50) | 3,200 / 3,000 DHS | |
+| **Orange** | Damascus (7.30), Najaf (7.20), Beirut (6.50) | 2,800–2,400 DHS | |
+| **Pink** | Casablanca (6.40), Dubai (6.30) | 2,200 / 2,000 DHS | |
+| **Light Blue** | Riyadh (6.50), Doha (5.80) | 1,800 / 1,600 DHS | |
+| **Brown** (cheapest) | Abu Dhabi (5.50), Kuwait City (5.40) | 1,400 / 1,200 DHS | Lowest |
+
+Rail lines: Al-Buraq Express (pos 6), Hejaz Railway (pos 15), Al-Haramayn Express (pos 25)
+Utilities: Nile Water Co. (pos 11), Gulf Oil Co. (pos 19)
+Taxes: Zakat Tax (500 DHS, pos 9), Oil Revenue Tax (2,000 DHS, pos 23)
 
 ## Stack
 
