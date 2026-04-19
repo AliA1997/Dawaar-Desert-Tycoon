@@ -143,6 +143,9 @@ export default function GameScreen() {
   const [landingPlayer, setLandingPlayer] = useState<Player | null>(null);
   const [lastCardText, setLastCardText] = useState<string | null>(null);
   const [lastCardType, setLastCardType] = useState<'chance' | 'community' | null>(null);
+  const [suspenseCard, setSuspenseCard] = useState<BoardProperty | null>(null);
+  const [suspensePlayer, setSuspensePlayer] = useState<Player | null>(null);
+  const [suspenseCountdown, setSuspenseCountdown] = useState(3);
   const [showBuild, setShowBuild] = useState(false);
   const [showAuction, setShowAuction] = useState(false);
   const [humanBid, setHumanBid] = useState(0);
@@ -161,6 +164,8 @@ export default function GameScreen() {
   const [showGameOver, setShowGameOver] = useState(false);
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Subscription
   const { isSubscribed } = useSubscription();
@@ -181,6 +186,11 @@ export default function GameScreen() {
     setHighlightPos(null);
     setLastCardText(null);
     setLastCardType(null);
+    setSuspenseCard(null);
+    setSuspensePlayer(null);
+    setSuspenseCountdown(3);
+    if (revealTimerRef.current) { clearTimeout(revealTimerRef.current); revealTimerRef.current = null; }
+    if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; }
   }, []);
 
   const openAdModal = useCallback(() => {
@@ -225,15 +235,21 @@ export default function GameScreen() {
       if (prev !== player.position) {
         const from = prev;
         const to = player.position;
-        const steps = ((to - from + 40) % 40) || 1;
+        const boardLen = gameState.board.length;
+        const steps = ((to - from + boardLen) % boardLen) || 1;
         prevPositionsRef.current[player.id] = to;
 
-        // Clear prior animation
+        // Clear all prior animation / reveal timers
         if (stepTimerRef.current) clearInterval(stepTimerRef.current);
         if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
+        if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        setSuspenseCard(null);
+        setSuspensePlayer(null);
+        setSuspenseCountdown(3);
 
         let step = 0;
-        setHighlightPos((from + 1) % 40);
+        setHighlightPos((from + 1) % boardLen);
 
         // Extract chance/community card text from log if drawn in the last 8 seconds
         const now = Date.now();
@@ -245,20 +261,52 @@ export default function GameScreen() {
         const extractedCardText = cardEntry
           ? cardEntry.message.replace(/^(CHANCE|COMMUNITY CHEST): /, '')
           : null;
+        const cardType = cardEntry?.message.startsWith('COMMUNITY CHEST:') ? 'community' : extractedCardText ? 'chance' : null;
+
+        const isHuman = player.id === myPlayerId;
 
         stepTimerRef.current = setInterval(() => {
           step++;
-          setHighlightPos((from + step) % 40);
+          setHighlightPos((from + step) % boardLen);
           if (step >= steps) {
             clearInterval(stepTimerRef.current!);
             stepTimerRef.current = null;
-            // Show landing card (with optional card text)
-            setLandingCard(gameState.board[to]);
-            setLandingPlayer(player);
-            setLastCardText(extractedCardText);
-            setLastCardType(cardEntry?.message.startsWith('COMMUNITY CHEST:') ? 'community' : extractedCardText ? 'chance' : null);
-            landingCardY.value = withSpring(0, { damping: 18, stiffness: 120 });
-            landingDismissRef.current = setTimeout(dismissLanding, 4000);
+
+            if (isHuman) {
+              // ── 3-second suspense before revealing the landing space ──
+              setSuspenseCard(gameState.board[to]);
+              setSuspensePlayer(player);
+              setSuspenseCountdown(3);
+              landingCardY.value = withSpring(0, { damping: 18, stiffness: 120 });
+
+              let count = 3;
+              countdownTimerRef.current = setInterval(() => {
+                count--;
+                setSuspenseCountdown(count);
+                if (count <= 0) {
+                  clearInterval(countdownTimerRef.current!);
+                  countdownTimerRef.current = null;
+                }
+              }, 1000);
+
+              revealTimerRef.current = setTimeout(() => {
+                setSuspenseCard(null);
+                setSuspensePlayer(null);
+                setLandingCard(gameState.board[to]);
+                setLandingPlayer(player);
+                setLastCardText(extractedCardText);
+                setLastCardType(cardType);
+                landingDismissRef.current = setTimeout(dismissLanding, 4000);
+              }, 3000);
+            } else {
+              // ── Instant reveal for NPC moves ──
+              setLandingCard(gameState.board[to]);
+              setLandingPlayer(player);
+              setLastCardText(extractedCardText);
+              setLastCardType(cardType);
+              landingCardY.value = withSpring(0, { damping: 18, stiffness: 120 });
+              landingDismissRef.current = setTimeout(dismissLanding, 4000);
+            }
           }
         }, 130);
       }
@@ -270,6 +318,8 @@ export default function GameScreen() {
   useEffect(() => () => {
     if (stepTimerRef.current) clearInterval(stepTimerRef.current);
     if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
   }, []);
 
   // Reset doublesGranted when the active player changes
@@ -479,41 +529,58 @@ export default function GameScreen() {
       </View>
 
       {/* ── Landing card ── slides up over the status bar when a piece lands ── */}
-      {landingCard && landingPlayer && (
+      {(suspenseCard && suspensePlayer) || (landingCard && landingPlayer) ? (
         <Animated.View style={[gameStyles.landingWrap, landingCardStyle]} pointerEvents="box-none">
-          <TouchableOpacity onPress={dismissLanding} activeOpacity={0.92} style={[
-            gameStyles.landingCard,
-            landingCard.colorGroup ? { borderColor: GROUP_COLORS[landingCard.colorGroup] + 'AA' } : {},
-          ]}>
-            {/* Color stripe */}
-            {landingCard.colorGroup && (
-              <View style={[gameStyles.landingStripe, { backgroundColor: GROUP_COLORS[landingCard.colorGroup] }]} />
-            )}
-            <View style={gameStyles.landingBody}>
-              <Text style={gameStyles.landingEmoji}>{getLandingEmoji(landingCard)}</Text>
-              <View style={gameStyles.landingTexts}>
-                <Text style={[gameStyles.landingWho, { color: landingPlayer.color }]}>
-                  {landingPlayer.id === myPlayerId ? 'You landed on' : `${landingPlayer.name} landed on`}
-                </Text>
-                <Text style={gameStyles.landingName}>{landingCard.name}</Text>
-                <Text style={gameStyles.landingCtx}>
-                  {getLandingContext(landingCard, landingPlayer, gameState.players)}
-                </Text>
-                {/* Chance / Community chest card text */}
-                {lastCardText && (
-                  <View style={gameStyles.cardTextBox}>
-                    <Text style={gameStyles.cardTextLabel}>
-                      {lastCardType === 'community' ? '♡ Community Chest' : '✦ Chance'}
-                    </Text>
-                    <Text style={gameStyles.cardTextBody}>{lastCardText}</Text>
-                  </View>
-                )}
+          {suspenseCard && suspensePlayer && !landingCard ? (
+            /* ── Suspense phase: hide what the player landed on ── */
+            <View style={[gameStyles.landingCard, gameStyles.suspenseCard]}>
+              <View style={gameStyles.landingBody}>
+                <Text style={gameStyles.landingEmoji}>🎲</Text>
+                <View style={gameStyles.landingTexts}>
+                  <Text style={[gameStyles.landingWho, { color: suspensePlayer.color }]}>
+                    You rolled…
+                  </Text>
+                  <Text style={gameStyles.suspenseMarks}>? ? ?</Text>
+                  <Text style={gameStyles.suspenseCountdownText}>
+                    Revealing in {suspenseCountdown}
+                  </Text>
+                </View>
               </View>
             </View>
-            <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>
-          </TouchableOpacity>
+          ) : landingCard && landingPlayer ? (
+            /* ── Full reveal ── */
+            <TouchableOpacity onPress={dismissLanding} activeOpacity={0.92} style={[
+              gameStyles.landingCard,
+              landingCard.colorGroup ? { borderColor: GROUP_COLORS[landingCard.colorGroup] + 'AA' } : {},
+            ]}>
+              {landingCard.colorGroup && (
+                <View style={[gameStyles.landingStripe, { backgroundColor: GROUP_COLORS[landingCard.colorGroup] }]} />
+              )}
+              <View style={gameStyles.landingBody}>
+                <Text style={gameStyles.landingEmoji}>{getLandingEmoji(landingCard)}</Text>
+                <View style={gameStyles.landingTexts}>
+                  <Text style={[gameStyles.landingWho, { color: landingPlayer.color }]}>
+                    {landingPlayer.id === myPlayerId ? 'You landed on' : `${landingPlayer.name} landed on`}
+                  </Text>
+                  <Text style={gameStyles.landingName}>{landingCard.name}</Text>
+                  <Text style={gameStyles.landingCtx}>
+                    {getLandingContext(landingCard, landingPlayer, gameState.players)}
+                  </Text>
+                  {lastCardText && (
+                    <View style={gameStyles.cardTextBox}>
+                      <Text style={gameStyles.cardTextLabel}>
+                        {lastCardType === 'community' ? '♡ Community Chest' : '✦ Chance'}
+                      </Text>
+                      <Text style={gameStyles.cardTextBody}>{lastCardText}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>
+            </TouchableOpacity>
+          ) : null}
         </Animated.View>
-      )}
+      ) : null}
 
       {/* My status */}
       {myPlayer && (
@@ -1658,6 +1725,22 @@ const gameStyles = StyleSheet.create({
     color: '#374151',
     textAlign: 'center',
     paddingBottom: 8,
+  },
+  suspenseCard: {
+    borderColor: Colors.gold + '88',
+  },
+  suspenseMarks: {
+    fontSize: 28,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+    letterSpacing: 8,
+    marginTop: 2,
+  },
+  suspenseCountdownText: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.gold + 'BB',
+    marginTop: 4,
   },
   cardTextBox: {
     marginTop: 10,
