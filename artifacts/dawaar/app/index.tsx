@@ -166,6 +166,31 @@ export default function HomeScreen() {
 
               <TouchableOpacity
                 style={styles.modeCard}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/challenges'); }}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={['#1A2640', '#0F1A2E']}
+                  style={styles.modeCardInner}
+                >
+                  <View style={[styles.modeIconBg, { backgroundColor: 'rgba(201,168,76,0.15)' }]}>
+                    <Ionicons name="trophy" size={32} color={Colors.gold} />
+                  </View>
+                  <View style={styles.modeTextBlock}>
+                    <Text style={styles.modeTitle}>Challenges</Text>
+                    <Text style={styles.modeDesc}>Conquer regions of the Arab world. Earn reward points.</Text>
+                  </View>
+                  <View style={styles.modeArrow}>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gold} />
+                  </View>
+                  <View style={[styles.modeBadge, { backgroundColor: 'rgba(201,168,76,0.15)', borderColor: 'rgba(201,168,76,0.3)' }]}>
+                    <Text style={[styles.modeBadgeText, { color: Colors.gold }]}>⭐ Points</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modeCard}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setScreen('multiplayer'); }}
                 activeOpacity={0.85}
               >

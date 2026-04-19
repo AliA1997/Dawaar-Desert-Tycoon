@@ -124,7 +124,7 @@ export default function GameScreen() {
     rollDice, buyProperty, buildHouse, sellHouse, auctionBuy, endTurn, payJail, leaveGame,
     error, clearError, lastDiceRoll,
     npcThinking, isSinglePlayer, npcPlayerIds,
-    claimAdReward, proposeTrade, acceptTrade, declineTrade, chooseTax,
+    claimAdReward, proposeTrade, acceptTrade, declineTrade, chooseTax, rewardPoints,
   } = useGame();
 
   const [selectedProperty, setSelectedProperty] = useState<BoardProperty | null>(null);
@@ -1196,12 +1196,24 @@ export default function GameScreen() {
       <Modal visible={showGameOver} transparent animationType="fade" onRequestClose={() => {}}>
         <View style={gameStyles.confirmOverlay}>
           <View style={gameStyles.confirmBox}>
-            <Text style={{ fontSize: 44, marginBottom: 8 }}>🏆</Text>
+            <Text style={{ fontSize: 44, marginBottom: 8 }}>
+              {gameState?.winnerId === myPlayerId ? '🏆' : '😔'}
+            </Text>
             <Text style={gameStyles.confirmTitle}>Game Over!</Text>
             {gameState?.winnerId && (
               <Text style={gameStyles.confirmMsg}>
                 {gameState.players.find(p => p.id === gameState.winnerId)?.name ?? 'Someone'} wins the game!
               </Text>
+            )}
+            {gameState?.boardId && gameState?.winnerId === myPlayerId && (
+              <View style={gameStyles.challengeRewardBanner}>
+                <Text style={gameStyles.challengeRewardIcon}>⭐</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={gameStyles.challengeRewardTitle}>Challenge Complete!</Text>
+                  <Text style={gameStyles.challengeRewardDesc}>+1,000 reward points earned</Text>
+                </View>
+                <Text style={gameStyles.challengeRewardTotal}>{rewardPoints.toLocaleString()} pts</Text>
+              </View>
             )}
             <View style={gameStyles.confirmBtns}>
               <TouchableOpacity
@@ -2430,6 +2442,37 @@ const gameStyles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_700Bold',
     color: '#EF4444',
+  },
+
+  challengeRewardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(201,168,76,0.12)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.gold + '44',
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    width: '100%',
+  },
+  challengeRewardIcon: { fontSize: 22 },
+  challengeRewardTitle: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+  },
+  challengeRewardDesc: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#9CA3AF',
+    marginTop: 1,
+  },
+  challengeRewardTotal: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
   },
 
   /* ── Confirmation / Game-Over modals ── */

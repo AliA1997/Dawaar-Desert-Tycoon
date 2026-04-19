@@ -34,6 +34,7 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="lobby" />
       <Stack.Screen name="game" />
+      <Stack.Screen name="challenges" />
       <Stack.Screen name="privacy" />
     </Stack>
   );

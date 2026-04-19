@@ -70,6 +70,7 @@ export interface GameState {
   pendingTrade: TradeOffer | null;
   freeParkingPool: number;
   pendingTaxChoice: PendingTaxChoice | null;
+  boardId?: string;
 }
 
 export type NpcDifficulty = 'easy' | 'medium' | 'hard';
@@ -111,8 +112,10 @@ interface GameContextType {
   savedGame: SavedGame | null;
   npcDifficulty: NpcDifficulty;
   setNpcDifficulty: (d: NpcDifficulty) => void;
+  rewardPoints: number;
   createGame: (name: string, token: string) => Promise<string | null>;
   createSinglePlayerGame: (name: string, token: string, npcCount: number, difficulty?: NpcDifficulty) => Promise<boolean>;
+  createChallengeGame: (boardId: string, name: string, token: string, difficulty?: NpcDifficulty) => Promise<boolean>;
   joinGame: (gameId: string, name: string, token: string) => Promise<boolean>;
   resumeGame: () => Promise<boolean>;
   startGame: () => Promise<void>;
@@ -151,19 +154,24 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [npcThinking, setNpcThinking] = useState(false);
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [npcDifficulty, setNpcDifficulty] = useState<NpcDifficulty>('medium');
+  const [rewardPoints, setRewardPoints] = useState(0);
+  const activeChallengeIdRef = useRef<string | null>(null);
+  const rewardAwardedRef = useRef<Set<string>>(new Set());
 
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingActiveRef = useRef(false);
   const npcBotRunningRef = useRef(false);
 
   const GAME_SAVE_KEY = '@dawaar_saved_game';
+  const REWARD_POINTS_KEY = '@dawaar_reward_points';
 
   // Load saved player data and any in-progress game
   useEffect(() => {
-    AsyncStorage.multiGet(['dawaar_playerId', 'dawaar_playerName', GAME_SAVE_KEY]).then(values => {
+    AsyncStorage.multiGet(['dawaar_playerId', 'dawaar_playerName', GAME_SAVE_KEY, REWARD_POINTS_KEY]).then(values => {
       const id = values[0][1];
       const name = values[1][1];
       const savedJson = values[2][1];
+      const ptsStr = values[3][1];
       if (id) setMyPlayerId(id);
       if (name) setMyPlayerName(name);
       if (savedJson) {
@@ -172,6 +180,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           setSavedGame(parsed);
         } catch { /* ignore corrupt data */ }
       }
+      if (ptsStr) setRewardPoints(parseInt(ptsStr, 10) || 0);
     });
   }, []);
 
@@ -586,6 +595,78 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [myPlayerId, attachToGame]);
 
+  // Auto-award 1000 points when a challenge game is won by human player
+  useEffect(() => {
+    if (!gameState || gameState.status !== 'finished' || !gameState.winnerId) return;
+    const challengeId = activeChallengeIdRef.current;
+    if (!challengeId) return;
+    if (gameState.winnerId !== myPlayerId) return;
+    const key = `${gameState.gameId}_${challengeId}`;
+    if (rewardAwardedRef.current.has(key)) return;
+    rewardAwardedRef.current.add(key);
+    setRewardPoints(prev => {
+      const next = prev + 1000;
+      AsyncStorage.setItem(REWARD_POINTS_KEY, String(next));
+      return next;
+    });
+  }, [gameState?.status, gameState?.winnerId, myPlayerId]);
+
+  const createChallengeGame = useCallback(async (
+    boardId: string,
+    name: string,
+    token: string,
+    difficulty: NpcDifficulty = 'medium',
+  ): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      let playerId = myPlayerId;
+      if (!playerId) {
+        playerId = generatePlayerId();
+        await AsyncStorage.setItem('dawaar_playerId', playerId);
+        setMyPlayerId(playerId);
+      }
+      await AsyncStorage.setItem('dawaar_playerName', name);
+      setMyPlayerName(name);
+      setNpcDifficulty(difficulty);
+
+      const data = await api('/games', 'POST', { playerName: name, playerId, token, boardId });
+      const gameId = data.gameId;
+
+      const npcIds: string[] = [];
+      const usedTokens = new Set([token]);
+      for (let i = 0; i < 3; i++) {
+        const npcId = `npc_${i}_${Date.now()}`;
+        const npcName = `${NPC_NAMES[i]} (Bot)`;
+        const npcToken = NPC_TOKENS.find(t => !usedTokens.has(t)) || NPC_TOKENS[i % NPC_TOKENS.length];
+        usedTokens.add(npcToken);
+        await api(`/games/${gameId}/join`, 'POST', { playerName: npcName, playerId: npcId, token: npcToken });
+        npcIds.push(npcId);
+      }
+
+      await api(`/games/${gameId}/start`, 'POST', { playerId });
+      const fullState = await api(`/games/${gameId}`);
+
+      setIsSinglePlayer(true);
+      setNpcPlayerIds(npcIds);
+      npcPlayerIdsRef.current = npcIds;
+      npcBotRunningRef.current = false;
+      activeChallengeIdRef.current = boardId;
+      attachToGame(fullState);
+
+      const save: SavedGame = { gameId, isSinglePlayer: true, npcPlayerIds: npcIds, myPlayerId: playerId! };
+      setSavedGame(save);
+      await AsyncStorage.setItem(GAME_SAVE_KEY, JSON.stringify(save));
+
+      return true;
+    } catch (e: any) {
+      setError(e.message);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [myPlayerId, attachToGame]);
+
   const joinGame = useCallback(async (gameId: string, name: string, token: string): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
@@ -824,6 +905,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setNpcPlayerIds([]);
     npcPlayerIdsRef.current = [];
     npcBotRunningRef.current = false;
+    activeChallengeIdRef.current = null;
   }, [stopPolling]);
 
   const myPlayer = gameState?.players.find(p => p.id === myPlayerId) || null;
@@ -844,8 +926,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       savedGame,
       npcDifficulty,
       setNpcDifficulty,
+      rewardPoints,
       createGame,
       createSinglePlayerGame,
+      createChallengeGame,
       joinGame,
       resumeGame,
       startGame,
