@@ -1,0 +1,173 @@
+import { buildBoard } from "../../challengeBoards";
+
+
+// ─── Industry: Silicon Souq (Tech) ────────────────────────────────────────────
+const TECH_BOARD = buildBoard(
+  [
+    { name: 'Maktobb',        nameAr: 'مكتوب' },
+    { name: 'Wamda',          nameAr: 'وامضة' },
+    { name: 'Fetchrr',        nameAr: 'فيتشر' },
+    { name: 'Yallaah',        nameAr: 'يلا' },
+    { name: 'Anghami+',       nameAr: 'أنغامي+' },
+    { name: 'Ziina Pay',      nameAr: 'زينة باي' },
+    { name: 'Tabbyy',         nameAr: 'تابي' },
+    { name: 'Sarwaa',         nameAr: 'ثروة' },
+    { name: 'Sooq.net',       nameAr: 'سوق.نت' },
+    { name: 'Noonn',          nameAr: 'نون' },
+    { name: 'Careezm',        nameAr: 'كريزم' },
+    { name: 'Talabaat',       nameAr: 'طلبات' },
+    { name: 'HungerZ',        nameAr: 'هانقرز' },
+    { name: 'Swvvl',          nameAr: 'سويفل' },
+    { name: 'Jeenee',         nameAr: 'جيني' },
+    { name: 'Fawwry',         nameAr: 'فوري' },
+    { name: 'Baraakaa',       nameAr: 'بركة' },
+    { name: 'Foodiccs',       nameAr: 'فوديكس' },
+    { name: 'Unifonicc',      nameAr: 'يونيفونيك' },
+    { name: 'Baytt.com',      nameAr: 'بيت.كوم' },
+    { name: 'Careeym',        nameAr: 'كريم' },
+    { name: 'Amazoon Arabia', nameAr: 'أمازون العرب' },
+  ],
+  [
+    { name: 'Dubai Internet City Hub', nameAr: 'مركز دبي للإنترنت' },
+    { name: 'KAFD Tech District',      nameAr: 'مجمع كافد التقني' },
+    { name: 'Amman Digital Hub',       nameAr: 'مركز عمّان الرقمي' },
+    { name: 'Cairo Innovation Zone',   nameAr: 'منطقة القاهرة للابتكار' },
+  ],
+  [
+    { name: 'Gulf Cloud Network',  nameAr: 'شبكة الغيوم الخليجية' },
+    { name: 'Nile Data Centres',   nameAr: 'مراكز بيانات النيل' },
+  ],
+  { name: 'Software License Tax', nameAr: 'ضريبة رخص البرامج',   amount: 500 },
+  { name: 'Data Breach Penalty',  nameAr: 'غرامة اختراق البيانات', amount: 2000 },
+  { name: 'Startup Roulette',     nameAr: 'روليت الشركات الناشئة' },
+  { name: 'Enterprise Fund',      nameAr: 'صندوق المشاريع' },
+);
+
+// ─── Industry: Fashion Week (Clothing) ────────────────────────────────────────
+const FASHION_BOARD = buildBoard(
+  [
+    { name: "Deena's Closet",  nameAr: 'خزانة دينا' },
+    { name: 'Moda Siti',       nameAr: 'موضة سيتي' },
+    { name: 'Sun & Saand',     nameAr: 'صن آند صاند' },
+    { name: 'Brandz4Less',     nameAr: 'براندز للأقل' },
+    { name: 'Trendz Mall',     nameAr: 'ترندز مول' },
+    { name: 'Rivoly',          nameAr: 'ريفولي' },
+    { name: 'Modanisaa',       nameAr: 'مودانيسا' },
+    { name: 'Al-Modaa',        nameAr: 'المودة' },
+    { name: 'Splassh',         nameAr: 'سبلاش' },
+    { name: 'Level Shooes',    nameAr: 'ليفل شوز' },
+    { name: 'Diyafa Fashion',  nameAr: 'ضيافة فاشون' },
+    { name: 'Zaraa ME',        nameAr: 'زارا الشرق الأوسط' },
+    { name: 'Mangoo ME',       nameAr: 'مانغو الشرق الأوسط' },
+    { name: 'Beymannn',        nameAr: 'بيمان' },
+    { name: 'H&MM ME',         nameAr: 'H&M الشرق الأوسط' },
+    { name: 'Massimoo',        nameAr: 'ماسيمو' },
+    { name: 'Primarkk',        nameAr: 'برايمارك' },
+    { name: 'Zalandoo ME',     nameAr: 'زالاندو الشرق الأوسط' },
+    { name: 'FarFetchh',       nameAr: 'فارفيتش' },
+    { name: 'Net-A-Porteer',   nameAr: 'نت-أ-بورتر' },
+    { name: 'Louisss Vitton',  nameAr: 'لويس فيتون' },
+    { name: 'Guccii Arabia',   nameAr: 'غوتشي العربية' },
+  ],
+  [
+    { name: 'Dubai Mall Fashion Walk',  nameAr: 'واجهة دبي مول' },
+    { name: 'Riyadh Park Mall',         nameAr: 'ريياض بارك مول' },
+    { name: 'The Avenues Kuwait',       nameAr: 'ذا أفنيوز الكويت' },
+    { name: 'Mall of Arabia Egypt',     nameAr: 'مول أوف أرابيا' },
+  ],
+  [
+    { name: 'Gulf Textile Mills', nameAr: 'مصانع النسيج الخليجية' },
+    { name: 'Nile Cotton Co.',    nameAr: 'شركة قطن النيل' },
+  ],
+  { name: 'Import Duty Tax',       nameAr: 'ضريبة الاستيراد',          amount: 500 },
+  { name: 'Fashion Licensing Fee', nameAr: 'رسوم ترخيص الأزياء',       amount: 2000 },
+  { name: 'Style Lottery',         nameAr: 'يانصيب الستايل' },
+  { name: 'Fashion Fund',          nameAr: 'صندوق الأزياء' },
+);
+
+// ─── Industry: Street Flavors (Food & Beverage) ───────────────────────────────
+const FOOD_BOARD = buildBoard(
+  [
+    { name: 'Karak Housee',      nameAr: 'بيت الكرك' },
+    { name: 'Baladii Burgers',   nameAr: 'برغر البلدي' },
+    { name: 'Shawarmer',         nameAr: 'شاورمر' },
+    { name: 'Al-Baiikk',        nameAr: 'البيك' },
+    { name: 'Kuduu',             nameAr: 'كودو' },
+    { name: 'Papa Johnzz',       nameAr: 'بابا جونز' },
+    { name: "Hardee'z ME",       nameAr: 'هارديز الشرق الأوسط' },
+    { name: 'Burger Bashaa',     nameAr: 'برغر باشا' },
+    { name: 'Starbuckees ME',    nameAr: 'ستاربيكس الشرق الأوسط' },
+    { name: 'Costa Coffii ME',   nameAr: 'كوستا كافيه' },
+    { name: "Dunkin' Arabiya",   nameAr: 'دنكن العربية' },
+    { name: 'Tazaa Bowl',        nameAr: 'طازة بول' },
+    { name: 'Maestro Pizza',     nameAr: 'مايسترو بيتزا' },
+    { name: 'Mooza Desserts',    nameAr: 'موزة للحلويات' },
+    { name: 'Savola Foods',      nameAr: 'صافولا للأغذية' },
+    { name: 'Agthiaa Group',     nameAr: 'أجتيا للمجموعة' },
+    { name: 'Bayara Foods',      nameAr: 'بياره للأغذية' },
+    { name: 'Nandoos ME',        nameAr: 'ناندوز الشرق الأوسط' },
+    { name: 'Texas Chickenn ME', nameAr: 'تكساس تشيكن' },
+    { name: 'KFZ Arabia',        nameAr: 'كي إف زد العربية' },
+    { name: 'Almaraii',          nameAr: 'المراعي' },
+    { name: "McDonald'zz ME",    nameAr: 'ماكدونالدز الشرق الأوسط' },
+  ],
+  [
+    { name: 'Al-Khobar Food Expo Hub', nameAr: 'مركز تصدير الخبر' },
+    { name: 'Jeddah Food Terminal',    nameAr: 'محطة جدة للأغذية' },
+    { name: 'Dubai Food Festival Hub', nameAr: 'مركز دبي للأغذية' },
+    { name: 'Cairo Distribution Hub',  nameAr: 'مركز توزيع القاهرة' },
+  ],
+  [
+    { name: 'Gulf Cold Storage Co.', nameAr: 'شركة الخليج للتبريد' },
+    { name: 'Nile Agri Supply',      nameAr: 'إمدادات النيل الزراعية' },
+  ],
+  { name: 'VAT on Food & Beverages', nameAr: 'ضريبة المواد الغذائية', amount: 500 },
+  { name: 'Health Inspection Fine',  nameAr: 'غرامة التفتيش الصحي',   amount: 2000 },
+  { name: 'Taste the Luck',          nameAr: 'تذوق الحظ' },
+  { name: 'Community Kitchen Fund',  nameAr: 'صندوق المطبخ المجتمعي' },
+);
+
+// ─── Industry: Iron Desert (Defense & Weapons) ────────────────────────────────
+const DEFENSE_BOARD = buildBoard(
+  [
+    { name: 'Tawazunn Holdings',     nameAr: 'توازن القابضة' },
+    { name: 'Burkan Munitionns',     nameAr: 'بركان للذخائر' },
+    { name: 'NIMRR Armored',         nameAr: 'نمر المدرعة' },
+    { name: 'Al Jabbrr Systems',     nameAr: 'الجابر سيستمز' },
+    { name: 'Saab ME',               nameAr: 'ساب الشرق الأوسط' },
+    { name: 'Karakal Intl',          nameAr: 'قراقل الدولية' },
+    { name: 'Halcoon',               nameAr: 'حلقون' },
+    { name: 'Emirates Def Tech',     nameAr: 'تقنيات الدفاع الإماراتية' },
+    { name: 'BAE Systms ME',         nameAr: 'BAE سيستمز' },
+    { name: 'Rheinmetalll ME',       nameAr: 'راينميتال' },
+    { name: 'Thalesss ME',           nameAr: 'ثاليس' },
+    { name: 'L3Harriss ME',          nameAr: 'إل٣ هاريس' },
+    { name: 'Raytheonn ME',          nameAr: 'ريثيون' },
+    { name: 'Boeengg Defense',       nameAr: 'بوينغ دفاع' },
+    { name: 'Airbus Def. ME',        nameAr: 'إيرباص دفاع' },
+    { name: 'Leeonardo ME',          nameAr: 'ليوناردو' },
+    { name: 'General Dyynamics ME',  nameAr: 'جنرال ديناميكس' },
+    { name: 'Lockheed ME',           nameAr: 'لوكهيد' },
+    { name: 'Northrop Grummann',     nameAr: 'نورثروب غرومان' },
+    { name: 'Jordaan Aerospace',     nameAr: 'الفضاء الجوي الأردني' },
+    { name: 'SAMII',                 nameAr: 'سامي' },
+    { name: 'EDGEE Group',           nameAr: 'مجموعة إيدج' },
+  ],
+  [
+    { name: 'Al Udeid Logistics Hub',     nameAr: 'مركز لوجستيات العديد' },
+    { name: 'King Fahd Base Supply',      nameAr: 'مؤن قاعدة الملك فهد' },
+    { name: 'Al Dhafra Defense Hub',      nameAr: 'مركز الدفاع الضفرة' },
+    { name: 'Muwaffaq Salti Logistics',   nameAr: 'لوجستيات مفرق' },
+  ],
+  [
+    { name: 'Gulf Explosives Testing',   nameAr: 'مختبر متفجرات الخليج' },
+    { name: 'Desert Drone Test Range',   nameAr: 'ميدان طائرات الصحراء' },
+  ],
+  { name: 'Defense Procurement Tax', nameAr: 'ضريبة المشتريات الدفاعية', amount: 500 },
+  { name: 'Arms Export License',     nameAr: 'رخصة تصدير الأسلحة',        amount: 2000 },
+  { name: 'War Games Lottery',       nameAr: 'يانصيب مناورات الحرب' },
+  { name: 'Defense Fund',            nameAr: 'صندوق الدفاع' },
+);
+
+
+export { DEFENSE_BOARD, FOOD_BOARD, FASHION_BOARD, TECH_BOARD };

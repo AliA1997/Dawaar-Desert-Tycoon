@@ -1,5 +1,7 @@
+// Type of cards
 export type SpaceType = 'property' | 'railroad' | 'utility' | 'tax' | 'chance' | 'community' | 'go' | 'jail' | 'free_parking' | 'go_to_jail' | 'corner';
 
+// contract regarding the board space
 export interface BoardSpace {
   index: number;
   name: string;

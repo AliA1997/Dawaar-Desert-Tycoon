@@ -178,7 +178,7 @@ export const GameBoard = memo(function GameBoard({
   // Scale the board to fit the screen: respect width (16px side margins) and
   // available height (380px reserved for top-bar + status + actions panel).
   // Hard-cap at 440px so large tablets / desktop don't over-inflate the board.
-  const boardSize = Math.round(Math.min(width - 16, height - 380, 440));
+  const boardSize = Math.round(Math.min(width - 16, height - 40, 440));
   const CS  = Math.round(boardSize / 9);
   const CS2 = Math.round(CS * 1.5);
   const BOARD_ACTUAL = CS * 6 + CS2 * 2;

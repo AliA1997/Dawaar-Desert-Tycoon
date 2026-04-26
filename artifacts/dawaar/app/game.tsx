@@ -162,10 +162,14 @@ export default function GameScreen() {
   const [doublesGranted, setDoublesGranted] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
+  const [auctionCountdown, setAuctionCountdown] = useState<number>(30);
+
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const auctionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const auctionCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Subscription
   const { isSubscribed } = useSubscription();
@@ -191,6 +195,20 @@ export default function GameScreen() {
     setSuspenseCountdown(3);
     if (revealTimerRef.current) { clearTimeout(revealTimerRef.current); revealTimerRef.current = null; }
     if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; }
+  }, []);
+  const clearAuctionState = useCallback(() => {
+    if(auctionTimerRef.current) {
+      clearTimeout(auctionTimerRef.current);
+      auctionTimerRef.current = null;
+    }
+
+    if(auctionCountdownTimerRef.current) {
+      clearInterval(auctionCountdownTimerRef.current);
+      auctionCountdownTimerRef.current = null;
+    }
+    setAuctionCountdown(30);
+
+    setShowAuction(false);
   }, []);
 
   const openAdModal = useCallback(() => {
@@ -320,6 +338,7 @@ export default function GameScreen() {
     if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
     if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (auctionTimerRef.current) clearTimeout(auctionTimerRef.current);
   }, []);
 
   // Reset doublesGranted when the active player changes
@@ -422,7 +441,7 @@ export default function GameScreen() {
       if (turnCountRef.current >= nextInterstitialRef.current) {
         setShowInterstitial(true);
         interstitialGapIdxRef.current = (interstitialGapIdxRef.current + 1) % INTERSTITIAL_GAPS.length;
-        nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current];
+        nextInterstitialRef.current = turnCountRef.current + INTERSTITIAL_GAPS[interstitialGapIdxRef.current] as any;
       }
     }
   };
@@ -432,13 +451,29 @@ export default function GameScreen() {
     await buyProperty();
   };
 
+  // When initializing an Auction set the default bid price to 0.75 cents.
   const handleAuction = () => {
     if (!mySpace || !mySpace.price) return;
-    setHumanBid(Math.floor(mySpace.price * 0.5));
+    setHumanBid(Math.floor(mySpace.price * 0.75));
     setNpcAuctionBids([]);
     setAuctionPhase('bidding');
     setAuctionWinner(null);
     setShowAuction(true);
+    let secondsToSetBid = 30;
+    auctionCountdownTimerRef.current = setInterval(() => {
+      secondsToSetBid--;
+      setAuctionCountdown(secondsToSetBid);
+      if (secondsToSetBid <= 0) {
+        clearInterval(auctionCountdownTimerRef.current!);
+        auctionCountdownTimerRef.current = null;
+        
+      }
+    }, 1000);
+
+    auctionTimerRef.current = setTimeout(async () => {
+      setHumanBid(0);
+      await handleSubmitBid();
+    }, 1000 * 31);
   };
 
   const handleSubmitBid = async () => {
@@ -449,7 +484,7 @@ export default function GameScreen() {
     setAuctionWinner(winner);
     setAuctionPhase('resolved');
     await auctionBuy(mySpace.index, winner.id, winner.bid);
-    setTimeout(() => setShowAuction(false), 2500);
+    setTimeout(() => clearAuctionState(), 2500);
   };
 
   // Simulate NPC bids sequentially when auction opens
@@ -880,6 +915,11 @@ export default function GameScreen() {
                   </Text>
                 </View>
               ))}
+            </View>
+            <View style={gameStyles.auctionPropertyBox}>
+              <Text style={gameStyles.suspenseCountdownText}>
+                Bid in {auctionCountdown}
+              </Text>
             </View>
 
             {auctionPhase === 'bidding' ? (
