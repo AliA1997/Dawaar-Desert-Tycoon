@@ -314,7 +314,7 @@ export default function GameScreen() {
                 setLandingPlayer(player);
                 setLastCardText(extractedCardText);
                 setLastCardType(cardType);
-                landingDismissRef.current = setTimeout(dismissLanding, 4000);
+                // Human player must close manually — no auto-dismiss
               }, 3000);
             } else {
               // ── Instant reveal for NPC moves ──
@@ -584,35 +584,49 @@ export default function GameScreen() {
             </View>
           ) : landingCard && landingPlayer ? (
             /* ── Full reveal ── */
-            <TouchableOpacity onPress={dismissLanding} activeOpacity={0.92} style={[
-              gameStyles.landingCard,
-              landingCard.colorGroup ? { borderColor: GROUP_COLORS[landingCard.colorGroup] + 'AA' } : {},
-            ]}>
-              {landingCard.colorGroup && (
-                <View style={[gameStyles.landingStripe, { backgroundColor: GROUP_COLORS[landingCard.colorGroup] }]} />
-              )}
-              <View style={gameStyles.landingBody}>
-                <Text style={gameStyles.landingEmoji}>{getLandingEmoji(landingCard)}</Text>
-                <View style={gameStyles.landingTexts}>
-                  <Text style={[gameStyles.landingWho, { color: landingPlayer.color }]}>
-                    {landingPlayer.id === myPlayerId ? 'You landed on' : `${landingPlayer.name} landed on`}
-                  </Text>
-                  <Text style={gameStyles.landingName}>{landingCard.name}</Text>
-                  <Text style={gameStyles.landingCtx}>
-                    {getLandingContext(landingCard, landingPlayer, gameState.players)}
-                  </Text>
-                  {lastCardText && (
-                    <View style={gameStyles.cardTextBox}>
-                      <Text style={gameStyles.cardTextLabel}>
-                        {lastCardType === 'community' ? '♡ Community Chest' : '✦ Chance'}
-                      </Text>
-                      <Text style={gameStyles.cardTextBody}>{lastCardText}</Text>
-                    </View>
+            (() => {
+              const isMyCard = landingPlayer.id === myPlayerId;
+              const CardContainer = isMyCard ? View : TouchableOpacity;
+              const cardContainerProps = isMyCard
+                ? {}
+                : { onPress: dismissLanding, activeOpacity: 0.92 };
+              return (
+                <CardContainer {...cardContainerProps} style={[
+                  gameStyles.landingCard,
+                  landingCard.colorGroup ? { borderColor: GROUP_COLORS[landingCard.colorGroup] + 'AA' } : {},
+                ]}>
+                  {landingCard.colorGroup && (
+                    <View style={[gameStyles.landingStripe, { backgroundColor: GROUP_COLORS[landingCard.colorGroup] }]} />
                   )}
-                </View>
-              </View>
-              <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>
-            </TouchableOpacity>
+                  {isMyCard && (
+                    <TouchableOpacity onPress={dismissLanding} style={gameStyles.landingCloseBtn} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                      <Ionicons name="close" size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  )}
+                  <View style={gameStyles.landingBody}>
+                    <Text style={gameStyles.landingEmoji}>{getLandingEmoji(landingCard)}</Text>
+                    <View style={gameStyles.landingTexts}>
+                      <Text style={[gameStyles.landingWho, { color: landingPlayer.color }]}>
+                        {isMyCard ? 'You landed on' : `${landingPlayer.name} landed on`}
+                      </Text>
+                      <Text style={gameStyles.landingName}>{landingCard.name}</Text>
+                      <Text style={gameStyles.landingCtx}>
+                        {getLandingContext(landingCard, landingPlayer, gameState.players)}
+                      </Text>
+                      {lastCardText && (
+                        <View style={gameStyles.cardTextBox}>
+                          <Text style={gameStyles.cardTextLabel}>
+                            {lastCardType === 'community' ? '♡ Community Chest' : '✦ Chance'}
+                          </Text>
+                          <Text style={gameStyles.cardTextBody}>{lastCardText}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  {!isMyCard && <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>}
+                </CardContainer>
+              );
+            })()
           ) : null}
         </Animated.View>
       ) : null}
@@ -1723,6 +1737,13 @@ const gameStyles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 20,
     elevation: 20,
+  },
+  landingCloseBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    padding: 4,
   },
   landingStripe: {
     height: 5,
