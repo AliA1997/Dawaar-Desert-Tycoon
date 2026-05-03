@@ -32,13 +32,13 @@ export default function HomeScreen() {
 
   const [screen, setScreen] = useState<Screen>('mode');
   const [mpTab, setMpTab] = useState<'create' | 'join'>('create');
-  const [playerName, setPlayerName] = useState(myPlayerName || '');
+  const [playerName, setPlayerName] = useState('');
   const [gameCode, setGameCode] = useState('');
   const [selectedToken, setSelectedToken] = useState('camel');
   const [npcCount, setNpcCount] = useState(2);
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const topPad = Platform.OS === 'web' ? 20 : insets.top;
 
   const handleResume = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -375,7 +375,7 @@ function NameInput({ value, onChange }: { value: string; onChange: (v: string) =
         <Ionicons name="person" size={18} color={Colors.gold} style={styles.inputIcon} />
         <TextInput
           style={styles.input}
-          placeholder="Enter your name"
+          placeholder={myPlayerName || "Enter your name"}
           placeholderTextColor="#4B5563"
           value={value}
           onChangeText={onChange}

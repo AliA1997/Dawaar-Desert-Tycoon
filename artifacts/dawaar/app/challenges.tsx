@@ -22,11 +22,11 @@ const DIFFICULTY_OPTIONS = [
 export default function ChallengesScreen() {
   const insets = useSafeAreaInsets();
   const { createChallengeGame, isLoading, error, clearError, myPlayerName, rewardPoints } = useGame();
-  const topPad = Platform.OS === 'web' ? 67 : insets.top;
+  const topPad = Platform.OS === 'web' ? 20 : insets.top;
 
   const [selectedRegion, setSelectedRegion] = useState<RegionChallenge | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<CountryChallenge | null>(null);
-  const [nameInput, setNameInput] = useState(myPlayerName || '');
+  const [nameInput, setNameInput] = useState('');
   const [selectedToken, setSelectedToken] = useState('camel');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
@@ -260,7 +260,7 @@ export default function ChallengesScreen() {
                   <Ionicons name="person" size={18} color={Colors.gold} style={{ marginRight: 10 }} />
                   <TextInput
                     style={styles.textInput}
-                    placeholder="Enter your name"
+                    placeholder={myPlayerName || "Enter your name"}
                     placeholderTextColor="#4B5563"
                     value={nameInput}
                     onChangeText={setNameInput}
