@@ -475,14 +475,25 @@ export default function GameScreen() {
     }, 1000);
 
     auctionTimerRef.current = setTimeout(async () => {
-      setHumanBid(0);
-      await handleSubmitBid();
+      // On expire: submit whatever the user typed in (treat 0 as a pass)
+      await handleSubmitBid(humanBid);
     }, 1000 * 31);
   };
 
-  const handleSubmitBid = async () => {
+  const handleSubmitBid = async (bidOverride?: number) => {
     if (!mySpace || !myPlayerId || !myPlayer) return;
-    const myBid = { id: myPlayerId, name: 'You', color: myPlayer.color, bid: humanBid };
+    // Cancel both the countdown ticker and the 31s expire timer immediately so
+    // a manual submit does not race with the auto-expire.
+    if (auctionTimerRef.current) {
+      clearTimeout(auctionTimerRef.current);
+      auctionTimerRef.current = null;
+    }
+    if (auctionCountdownTimerRef.current) {
+      clearInterval(auctionCountdownTimerRef.current);
+      auctionCountdownTimerRef.current = null;
+    }
+    const finalHumanBid = typeof bidOverride === 'number' ? bidOverride : humanBid;
+    const myBid = { id: myPlayerId, name: 'You', color: myPlayer.color, bid: finalHumanBid };
     const allBids = [...npcAuctionBids, myBid];
     const winner = allBids.reduce((best, b) => b.bid > best.bid ? b : best, allBids[0]);
     setAuctionWinner(winner);
@@ -567,8 +578,13 @@ export default function GameScreen() {
         />
       </View>
 
-      {/* ── Landing card ── slides up over the status bar when a piece lands ── */}
-      {(suspenseCard && suspensePlayer) || (landingCard && landingPlayer) ? (
+      {/* ── Landing card ── rendered as a Modal so it always layers above other modals ── */}
+      <Modal
+        visible={!!((suspenseCard && suspensePlayer) || (landingCard && landingPlayer))}
+        transparent
+        animationType="none"
+        onRequestClose={dismissLanding}
+      >
         <Animated.View style={[gameStyles.landingWrap, landingCardStyle]} pointerEvents="box-none">
           {suspenseCard && suspensePlayer && !landingCard ? (
             /* ── Suspense phase: hide what the player landed on ── */
@@ -633,7 +649,7 @@ export default function GameScreen() {
             })()
           ) : null}
         </Animated.View>
-      ) : null}
+      </Modal>
 
       {/* My status */}
       {myPlayer && (

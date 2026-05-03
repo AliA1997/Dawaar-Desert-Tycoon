@@ -17,7 +17,8 @@ import {
   chooseTax,
   declineTrade,
 } from '../game/gameState.js';
-import { getGame, setGame, generateGameId } from '../game/gameStore.js';
+import { getGame, setGame, generateGameId, gameEvents } from '../game/gameStore.js';
+import { setPlayerReady } from '../game/gameState.js';
 
 const router: IRouter = Router();
 
@@ -223,9 +224,22 @@ router.post('/:gameId/choose-tax', (req, res) => {
   res.json(newState);
 });
 
-// GET /api/games/:gameId/poll - Long-poll for updates
-router.get('/:gameId/poll', (req, res) => {
+// POST /api/games/:gameId/ready — toggle a player's lobby ready flag
+router.post('/:gameId/ready', (req, res) => {
   const state = getGame(req.params.gameId);
+  if (!state) return res.status(404).json({ error: 'Game not found' });
+  const { playerId, ready } = req.body;
+  if (!playerId) return res.status(400).json({ error: 'playerId is required' });
+  const { state: newState, error } = setPlayerReady(state, playerId, ready !== false);
+  if (error) return res.status(400).json({ error });
+  setGame(req.params.gameId, newState);
+  res.json(newState);
+});
+
+// GET /api/games/:gameId/poll - Long-poll for updates (event-driven)
+router.get('/:gameId/poll', (req, res) => {
+  const gameId = req.params.gameId;
+  const state = getGame(gameId);
   if (!state) return res.status(404).json({ error: 'Game not found' });
 
   const clientVersion = parseInt(req.query.version as string) || 0;
@@ -234,34 +248,40 @@ router.get('/:gameId/poll', (req, res) => {
     return res.json(state);
   }
 
-  // Long-poll: wait up to 20 seconds for a change
-  const timeout = setTimeout(() => {
-    const latestState = getGame(req.params.gameId);
-    if (latestState) {
-      res.json(latestState);
-    } else {
-      res.status(304).send();
-    }
-  }, 20000);
+  let settled = false;
+  const eventName = `game:${gameId}`;
 
-  // Check every 500ms for version change
-  const interval = setInterval(() => {
-    const latestState = getGame(req.params.gameId);
-    if (!latestState) {
-      clearInterval(interval);
-      clearTimeout(timeout);
-      return res.status(404).json({ error: 'Game not found' });
+  const onUpdate = (newState: { version: number }) => {
+    if (settled) return;
+    if (newState.version > clientVersion) {
+      settled = true;
+      cleanup();
+      res.json(newState);
     }
-    if (latestState.version > clientVersion) {
-      clearInterval(interval);
-      clearTimeout(timeout);
-      res.json(latestState);
-    }
-  }, 500);
+  };
+
+  const onTimeout = () => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    const latest = getGame(gameId);
+    if (latest) res.json(latest);
+    else res.status(404).json({ error: 'Game not found' });
+  };
+
+  const timeoutHandle = setTimeout(onTimeout, 20000);
+
+  const cleanup = () => {
+    clearTimeout(timeoutHandle);
+    gameEvents.off(eventName, onUpdate);
+  };
+
+  gameEvents.on(eventName, onUpdate);
 
   req.on('close', () => {
-    clearInterval(interval);
-    clearTimeout(timeout);
+    if (settled) return;
+    settled = true;
+    cleanup();
   });
 });
 

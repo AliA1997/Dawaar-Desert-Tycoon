@@ -135,6 +135,8 @@ interface GameContextType {
   clearError: () => void;
   lastDiceRoll: number[] | null;
   leaveGame: () => void;
+  setReady: (ready: boolean) => Promise<void>;
+  pendingAction: string | null;
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -155,6 +157,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [npcDifficulty, setNpcDifficulty] = useState<NpcDifficulty>('medium');
   const [rewardPoints, setRewardPoints] = useState(0);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const activeChallengeIdRef = useRef<string | null>(null);
   const rewardAwardedRef = useRef<Set<string>>(new Set());
 
@@ -181,6 +184,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         } catch { /* ignore corrupt data */ }
       }
       if (ptsStr) setRewardPoints(parseInt(ptsStr, 10) || 0);
+
+      // Sync rewardPoints from server (server is source of truth)
+      const playerId = id;
+      if (playerId) {
+        fetch(`${API_BASE}/players/${playerId}/profile`)
+          .then(r => r.ok ? r.json() : null)
+          .then(profile => {
+            if (profile && typeof profile.rewardPoints === 'number') {
+              setRewardPoints(profile.rewardPoints);
+              AsyncStorage.setItem(REWARD_POINTS_KEY, String(profile.rewardPoints)).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
     });
   }, []);
 
@@ -604,12 +621,57 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const key = `${gameState.gameId}_${challengeId}`;
     if (rewardAwardedRef.current.has(key)) return;
     rewardAwardedRef.current.add(key);
-    setRewardPoints(prev => {
-      const next = prev + 1000;
-      AsyncStorage.setItem(REWARD_POINTS_KEY, String(next));
-      return next;
-    });
+
+    // Award server-side (deduped by challengeId on the server)
+    fetch(`${API_BASE}/players/${myPlayerId}/reward`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ points: 1000, challengeId }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(profile => {
+        if (profile && typeof profile.rewardPoints === 'number') {
+          setRewardPoints(profile.rewardPoints);
+          AsyncStorage.setItem(REWARD_POINTS_KEY, String(profile.rewardPoints)).catch(() => {});
+        } else {
+          // Fallback to local-only if server fails
+          setRewardPoints(prev => {
+            const next = prev + 1000;
+            AsyncStorage.setItem(REWARD_POINTS_KEY, String(next)).catch(() => {});
+            return next;
+          });
+        }
+      })
+      .catch(() => {
+        setRewardPoints(prev => {
+          const next = prev + 1000;
+          AsyncStorage.setItem(REWARD_POINTS_KEY, String(next)).catch(() => {});
+          return next;
+        });
+      });
   }, [gameState?.status, gameState?.winnerId, myPlayerId]);
+
+  // Mark an action as "pending" if it takes longer than 300ms — used by UI to
+  // show a soft "confirming…" indicator without flashing on every fast call.
+  const trackPending = useCallback(async <T,>(label: string, fn: () => Promise<T>): Promise<T> => {
+    const tid = setTimeout(() => setPendingAction(label), 300);
+    try {
+      return await fn();
+    } finally {
+      clearTimeout(tid);
+      setPendingAction(null);
+    }
+  }, []);
+
+  const setReady = useCallback(async (ready: boolean) => {
+    if (!gameState || !myPlayerId) return;
+    try {
+      const state = await api(`/games/${gameState.gameId}/ready`, 'POST', { playerId: myPlayerId, ready });
+      setGameState(state);
+    } catch {
+      // Silent — ready is non-critical
+    }
+  }, [gameState, myPlayerId]);
 
   const createChallengeGame = useCallback(async (
     boardId: string,
@@ -949,6 +1011,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       clearError: () => setError(null),
       lastDiceRoll,
       leaveGame,
+      setReady,
+      pendingAction,
     }}>
       {children}
     </GameContext.Provider>

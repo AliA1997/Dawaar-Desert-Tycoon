@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import { useGame, getTokenImage } from '@/context/GameContext';
 
 export default function LobbyScreen() {
   const insets = useSafeAreaInsets();
-  const { gameState, myPlayerId, myPlayer, startGame, isLoading, error, leaveGame } = useGame();
+  const { gameState, myPlayerId, myPlayer, startGame, isLoading, error, leaveGame, setReady } = useGame();
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
@@ -34,6 +34,16 @@ export default function LobbyScreen() {
   const isHost = gameState.players[0]?.id === myPlayerId;
   const gameId = gameState.gameId;
   const canStart = isHost && gameState.players.length >= 2;
+
+  // Auto-mark non-host players ready 1s after entering the lobby.
+  // setReady is intentionally excluded from deps — its identity changes when
+  // gameState updates, which would re-fire this effect on every poll.
+  useEffect(() => {
+    if (!myPlayer || isHost || myPlayer.ready) return;
+    const t = setTimeout(() => { setReady(true).catch(() => {}); }, 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myPlayer?.id, myPlayer?.ready, isHost]);
 
   const handleCopyCode = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -128,7 +138,11 @@ export default function LobbyScreen() {
                 </Text>
               </View>
               <View style={styles.playerReady}>
-                <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+                {idx === 0 || player.ready ? (
+                  <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+                ) : (
+                  <Ionicons name="time-outline" size={20} color="#6B7280" />
+                )}
               </View>
             </View>
           ))}

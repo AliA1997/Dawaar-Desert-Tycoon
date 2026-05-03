@@ -15,6 +15,7 @@ export interface Player {
   isBankrupt: boolean;
   color: string;
   doublesCount: number;
+  ready?: boolean;
 }
 
 export interface BoardProperty {
@@ -828,6 +829,21 @@ export function auctionBuy(state: GameState, winnerId: string, propertyIndex: nu
         ...state.log,
         { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId },
       ].slice(-50),
+    },
+  };
+}
+
+export function setPlayerReady(state: GameState, playerId: string, ready: boolean): { state: GameState; error?: string } {
+  if (state.status !== 'waiting') return { state, error: 'Game already started' };
+  const player = state.players.find(p => p.id === playerId);
+  if (!player) return { state, error: 'Player not found' };
+  if (player.ready === ready) return { state };
+  const newPlayers = state.players.map(p => p.id === playerId ? { ...p, ready } : p);
+  return {
+    state: {
+      ...state,
+      players: newPlayers,
+      version: state.version + 1,
     },
   };
 }
