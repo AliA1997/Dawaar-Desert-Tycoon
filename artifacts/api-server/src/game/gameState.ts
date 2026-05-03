@@ -15,7 +15,7 @@ export interface Player {
   isBankrupt: boolean;
   color: string;
   doublesCount: number;
-  ready?: boolean;
+  ready: boolean;
 }
 
 export interface BoardProperty {
@@ -111,6 +111,7 @@ export function createGame(gameId: string, playerName: string, playerId: string,
     isBankrupt: false,
     color: PLAYER_COLORS[0],
     doublesCount: 0,
+    ready: false,
   };
 
   const sourceBoard = boardId ? CHALLENGE_BOARDS[boardId] : undefined;
@@ -150,6 +151,7 @@ export function joinGame(state: GameState, playerName: string, playerId: string,
     isBankrupt: false,
     color: PLAYER_COLORS[colorIndex],
     doublesCount: 0,
+    ready: false,
   };
 
   const newState = {
@@ -157,6 +159,24 @@ export function joinGame(state: GameState, playerName: string, playerId: string,
     players: [...state.players, player],
     version: state.version + 1,
     log: [...state.log, { message: `${playerName} joined the game`, timestamp: new Date().toISOString(), playerId }],
+  };
+  return { state: newState };
+}
+
+export function setReady(state: GameState, playerId: string, ready: boolean): { state: GameState; error?: string } {
+  if (state.status !== 'waiting') return { state, error: 'Game already started' };
+  const player = state.players.find(p => p.id === playerId);
+  if (!player) return { state, error: 'Player not found' };
+  if (player.ready === ready) return { state };
+  const newState: GameState = {
+    ...state,
+    players: state.players.map(p => p.id === playerId ? { ...p, ready } : p),
+    version: state.version + 1,
+    log: [...state.log, {
+      message: `${player.name} is ${ready ? 'ready' : 'not ready'}`,
+      timestamp: new Date().toISOString(),
+      playerId,
+    }].slice(-50),
   };
   return { state: newState };
 }
@@ -829,21 +849,6 @@ export function auctionBuy(state: GameState, winnerId: string, propertyIndex: nu
         ...state.log,
         { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId },
       ].slice(-50),
-    },
-  };
-}
-
-export function setPlayerReady(state: GameState, playerId: string, ready: boolean): { state: GameState; error?: string } {
-  if (state.status !== 'waiting') return { state, error: 'Game already started' };
-  const player = state.players.find(p => p.id === playerId);
-  if (!player) return { state, error: 'Player not found' };
-  if (player.ready === ready) return { state };
-  const newPlayers = state.players.map(p => p.id === playerId ? { ...p, ready } : p);
-  return {
-    state: {
-      ...state,
-      players: newPlayers,
-      version: state.version + 1,
     },
   };
 }

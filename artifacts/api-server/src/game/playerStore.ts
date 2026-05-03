@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { promises as fsp } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -7,106 +8,114 @@ const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const PLAYERS_FILE = path.join(DATA_DIR, 'players.json');
 
 export interface PlayerProfile {
-  id: string;
+  playerId: string;
   rewardPoints: number;
-  challengesCompleted: string[];
+  unlockedAdvantages: number[];
   updatedAt: string;
 }
 
-const players = new Map<string, PlayerProfile>();
+const ADVANTAGE_THRESHOLDS = [500, 1000, 2000];
+
+const profiles = new Map<string, PlayerProfile>();
 
 let dirty = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let writingPromise: Promise<void> | null = null;
-const WRITE_DEBOUNCE_MS = 250;
+const DEBOUNCE_MS = 250;
 
-function loadFromFile(): void {
+function loadProfiles(): void {
   try {
     if (fs.existsSync(PLAYERS_FILE)) {
       const raw = fs.readFileSync(PLAYERS_FILE, 'utf-8');
-      const saved = JSON.parse(raw) as Record<string, PlayerProfile>;
-      for (const [id, profile] of Object.entries(saved)) {
-        players.set(id, profile);
-      }
+      const obj = JSON.parse(raw) as Record<string, PlayerProfile>;
+      for (const [id, p] of Object.entries(obj)) profiles.set(id, p);
     }
-  } catch {
-    // ignore
-  }
+  } catch { /* corrupt — fresh */ }
 }
 
 async function writeNow(): Promise<void> {
-  if (!fs.existsSync(DATA_DIR)) {
-    await fs.promises.mkdir(DATA_DIR, { recursive: true });
-  }
-  const obj: Record<string, PlayerProfile> = {};
-  for (const [id, p] of players.entries()) obj[id] = p;
-  const tmp = PLAYERS_FILE + '.tmp';
-  await fs.promises.writeFile(tmp, JSON.stringify(obj), 'utf-8');
-  await fs.promises.rename(tmp, PLAYERS_FILE);
-}
-
-async function flushIfDirty(): Promise<void> {
-  if (!dirty) return;
-  if (writingPromise) await writingPromise;
-  if (!dirty) return;
   dirty = false;
-  writingPromise = writeNow().catch(() => { dirty = true; }).finally(() => {
-    writingPromise = null;
-  });
-  await writingPromise;
+  try {
+    await fsp.mkdir(DATA_DIR, { recursive: true });
+    const obj: Record<string, PlayerProfile> = {};
+    for (const [id, p] of profiles.entries()) obj[id] = p;
+    const tmp = PLAYERS_FILE + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify(obj), 'utf-8');
+    await fsp.rename(tmp, PLAYERS_FILE);
+  } catch { /* ignore */ }
 }
 
-function scheduleSave(): void {
+function scheduleWrite(): void {
   dirty = true;
   if (writeTimer) return;
   writeTimer = setTimeout(() => {
     writeTimer = null;
-    flushIfDirty().catch(() => {});
-  }, WRITE_DEBOUNCE_MS);
+    writingPromise = writeNow().finally(() => { writingPromise = null; });
+  }, DEBOUNCE_MS);
 }
 
-loadFromFile();
-
-if (process.env.NODE_ENV !== 'test') {
-  for (const sig of ['SIGTERM', 'SIGINT'] as const) {
-    process.once(sig, async () => {
-      if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
-      try { await flushIfDirty(); } catch {}
-    });
-  }
+export async function flushPlayersToFile(): Promise<void> {
+  if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
+  if (writingPromise) { try { await writingPromise; } catch {} }
+  if (dirty) await writeNow();
 }
 
-export function getPlayerProfile(id: string): PlayerProfile {
-  let p = players.get(id);
+loadProfiles();
+
+function computeUnlocks(points: number): number[] {
+  const unlocked: number[] = [];
+  ADVANTAGE_THRESHOLDS.forEach((cost, i) => { if (points >= cost) unlocked.push(i); });
+  return unlocked;
+}
+
+export function getProfile(playerId: string): PlayerProfile {
+  let p = profiles.get(playerId);
   if (!p) {
-    p = { id, rewardPoints: 0, challengesCompleted: [], updatedAt: new Date().toISOString() };
-    players.set(id, p);
-    scheduleSave();
+    p = {
+      playerId,
+      rewardPoints: 0,
+      unlockedAdvantages: [],
+      updatedAt: new Date().toISOString(),
+    };
+    profiles.set(playerId, p);
   }
   return p;
 }
 
-export function awardReward(id: string, points: number, challengeId?: string): PlayerProfile {
-  const p = getPlayerProfile(id);
-  if (challengeId && p.challengesCompleted.includes(challengeId)) {
-    return p;
-  }
+export function addRewardPoints(playerId: string, delta: number): PlayerProfile {
+  const current = getProfile(playerId);
   const next: PlayerProfile = {
-    ...p,
-    rewardPoints: p.rewardPoints + points,
-    challengesCompleted: challengeId ? [...p.challengesCompleted, challengeId] : p.challengesCompleted,
+    ...current,
+    rewardPoints: Math.max(0, current.rewardPoints + delta),
     updatedAt: new Date().toISOString(),
   };
-  players.set(id, next);
-  scheduleSave();
+  next.unlockedAdvantages = computeUnlocks(next.rewardPoints);
+  profiles.set(playerId, next);
+  scheduleWrite();
   return next;
 }
 
-export async function flushPlayersForTest(): Promise<void> {
-  await flushIfDirty();
+export function setRewardPoints(playerId: string, points: number): PlayerProfile {
+  const current = getProfile(playerId);
+  const next: PlayerProfile = {
+    ...current,
+    rewardPoints: Math.max(0, points),
+    updatedAt: new Date().toISOString(),
+  };
+  next.unlockedAdvantages = computeUnlocks(next.rewardPoints);
+  profiles.set(playerId, next);
+  scheduleWrite();
+  return next;
 }
 
-export function _resetForTest(): void {
-  players.clear();
-  dirty = false;
+const isTest = !!process.env.VITEST || process.env.NODE_ENV === 'test';
+let shuttingDown = false;
+async function gracefulShutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { await flushPlayersToFile(); } finally { /* gameStore handles process.exit */ }
+}
+if (!isTest) {
+  process.once('SIGTERM', gracefulShutdown);
+  process.once('SIGINT', gracefulShutdown);
 }

@@ -1,24 +1,28 @@
 import { Router, type IRouter } from 'express';
-import { getPlayerProfile, awardReward } from '../game/playerStore.js';
+import { getProfile, addRewardPoints, setRewardPoints } from '../game/playerStore.js';
 
 const router: IRouter = Router();
 
-// GET /api/players/:id/profile
-router.get('/:id/profile', (req, res) => {
-  const profile = getPlayerProfile(req.params.id);
-  res.json(profile);
+// GET /api/players/:playerId/profile
+router.get('/:playerId/profile', (req, res): void => {
+  if (!req.params.playerId) {
+    res.status(400).json({ error: 'playerId is required' });
+    return;
+  }
+  res.json(getProfile(req.params.playerId));
 });
 
-// POST /api/players/:id/reward { points, challengeId? }
-router.post('/:id/reward', (req, res) => {
-  const { points, challengeId } = req.body ?? {};
-  if (typeof points !== 'number' || points <= 0) {
-    return res.status(400).json({ error: 'points must be a positive number' });
+// POST /api/players/:playerId/reward
+// body: { points: number, set?: boolean }
+router.post('/:playerId/reward', (req, res): void => {
+  const { points, set } = req.body ?? {};
+  if (typeof points !== 'number' || Number.isNaN(points)) {
+    res.status(400).json({ error: 'points (number) is required' });
+    return;
   }
-  if (points > 10000) {
-    return res.status(400).json({ error: 'points exceeds maximum allowed' });
-  }
-  const profile = awardReward(req.params.id, points, challengeId);
+  const profile = set
+    ? setRewardPoints(req.params.playerId, points)
+    : addRewardPoints(req.params.playerId, points);
   res.json(profile);
 });
 

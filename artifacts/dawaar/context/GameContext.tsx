@@ -132,11 +132,10 @@ interface GameContextType {
   declineTrade: () => Promise<void>;
   chooseTax: (choice: 'flat' | 'percent') => Promise<void>;
   claimAdReward: () => Promise<void>;
+  setReady: (ready: boolean) => Promise<void>;
   clearError: () => void;
   lastDiceRoll: number[] | null;
   leaveGame: () => void;
-  setReady: (ready: boolean) => Promise<void>;
-  pendingAction: string | null;
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -157,7 +156,6 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [npcDifficulty, setNpcDifficulty] = useState<NpcDifficulty>('medium');
   const [rewardPoints, setRewardPoints] = useState(0);
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const activeChallengeIdRef = useRef<string | null>(null);
   const rewardAwardedRef = useRef<Set<string>>(new Set());
 
@@ -183,17 +181,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           setSavedGame(parsed);
         } catch { /* ignore corrupt data */ }
       }
-      if (ptsStr) setRewardPoints(parseInt(ptsStr, 10) || 0);
+      const localPts = ptsStr ? (parseInt(ptsStr, 10) || 0) : 0;
+      if (localPts) setRewardPoints(localPts);
 
-      // Sync rewardPoints from server (server is source of truth)
-      const playerId = id;
-      if (playerId) {
-        fetch(`${API_BASE}/players/${playerId}/profile`)
-          .then(r => r.ok ? r.json() : null)
+      // After we know our playerId, reconcile reward points with the server.
+      // Take the higher of (local, server) so a fresh install/device picks up
+      // server-tracked progress and a freshly-earned local win is preserved.
+      if (id) {
+        fetch(`${API_BASE}/players/${id}/profile`)
+          .then(r => (r.ok ? r.json() : null))
           .then(profile => {
-            if (profile && typeof profile.rewardPoints === 'number') {
-              setRewardPoints(profile.rewardPoints);
-              AsyncStorage.setItem(REWARD_POINTS_KEY, String(profile.rewardPoints)).catch(() => {});
+            if (!profile) return;
+            const serverPts = typeof profile.rewardPoints === 'number' ? profile.rewardPoints : 0;
+            const merged = Math.max(localPts, serverPts);
+            setRewardPoints(merged);
+            AsyncStorage.setItem(REWARD_POINTS_KEY, String(merged)).catch(() => {});
+            if (merged !== serverPts) {
+              fetch(`${API_BASE}/players/${id}/reward`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ points: merged, set: true }),
+              }).catch(() => {});
             }
           })
           .catch(() => {});
@@ -621,57 +629,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const key = `${gameState.gameId}_${challengeId}`;
     if (rewardAwardedRef.current.has(key)) return;
     rewardAwardedRef.current.add(key);
-
-    // Award server-side (deduped by challengeId on the server)
-    fetch(`${API_BASE}/players/${myPlayerId}/reward`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ points: 1000, challengeId }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(profile => {
-        if (profile && typeof profile.rewardPoints === 'number') {
-          setRewardPoints(profile.rewardPoints);
-          AsyncStorage.setItem(REWARD_POINTS_KEY, String(profile.rewardPoints)).catch(() => {});
-        } else {
-          // Fallback to local-only if server fails
-          setRewardPoints(prev => {
-            const next = prev + 1000;
-            AsyncStorage.setItem(REWARD_POINTS_KEY, String(next)).catch(() => {});
-            return next;
-          });
-        }
-      })
-      .catch(() => {
-        setRewardPoints(prev => {
-          const next = prev + 1000;
-          AsyncStorage.setItem(REWARD_POINTS_KEY, String(next)).catch(() => {});
-          return next;
-        });
-      });
+    setRewardPoints(prev => {
+      const next = prev + 1000;
+      AsyncStorage.setItem(REWARD_POINTS_KEY, String(next));
+      // Mirror to server (best-effort)
+      if (myPlayerId) {
+        fetch(`${API_BASE}/players/${myPlayerId}/reward`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ points: 1000 }),
+        }).catch(() => {});
+      }
+      return next;
+    });
   }, [gameState?.status, gameState?.winnerId, myPlayerId]);
-
-  // Mark an action as "pending" if it takes longer than 300ms — used by UI to
-  // show a soft "confirming…" indicator without flashing on every fast call.
-  const trackPending = useCallback(async <T,>(label: string, fn: () => Promise<T>): Promise<T> => {
-    const tid = setTimeout(() => setPendingAction(label), 300);
-    try {
-      return await fn();
-    } finally {
-      clearTimeout(tid);
-      setPendingAction(null);
-    }
-  }, []);
-
-  const setReady = useCallback(async (ready: boolean) => {
-    if (!gameState || !myPlayerId) return;
-    try {
-      const state = await api(`/games/${gameState.gameId}/ready`, 'POST', { playerId: myPlayerId, ready });
-      setGameState(state);
-    } catch {
-      // Silent — ready is non-critical
-    }
-  }, [gameState, myPlayerId]);
 
   const createChallengeGame = useCallback(async (
     boardId: string,
@@ -784,10 +755,31 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const buyProperty = useCallback(async () => {
     if (!gameState || !myPlayerId) return;
     setError(null);
+    // Optimistic: claim ownership locally so the UI updates instantly.
+    const snapshot = gameState;
+    const me = snapshot.players.find(p => p.id === myPlayerId);
+    if (me) {
+      const space = snapshot.board[me.position];
+      if (space && !space.ownerId && space.price && me.money >= space.price) {
+        setGameState({
+          ...snapshot,
+          players: snapshot.players.map(p =>
+            p.id === myPlayerId
+              ? { ...p, money: p.money - (space.price ?? 0), properties: [...p.properties, space.index] }
+              : p,
+          ),
+          board: snapshot.board.map(s =>
+            s.index === space.index ? { ...s, ownerId: myPlayerId } : s,
+          ),
+        });
+      }
+    }
     try {
       const state = await api(`/games/${gameState.gameId}/buy`, 'POST', { playerId: myPlayerId });
       setGameState(state);
     } catch (e: any) {
+      // Revert optimistic update
+      setGameState(snapshot);
       setError(e.message);
     }
   }, [gameState, myPlayerId]);
@@ -795,10 +787,32 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const endTurn = useCallback(async () => {
     if (!gameState || !myPlayerId) return;
     setError(null);
+    // Optimistic: clear hasRolled and disable my action buttons immediately.
+    const snapshot = gameState;
+    setGameState({ ...snapshot, hasRolled: false });
     try {
       const state = await api(`/games/${gameState.gameId}/end-turn`, 'POST', { playerId: myPlayerId });
       setGameState(state);
     } catch (e: any) {
+      setGameState(snapshot);
+      setError(e.message);
+    }
+  }, [gameState, myPlayerId]);
+
+  const setReady = useCallback(async (ready: boolean) => {
+    if (!gameState || !myPlayerId) return;
+    setError(null);
+    // Optimistic toggle
+    const snapshot = gameState;
+    setGameState({
+      ...snapshot,
+      players: snapshot.players.map(p => p.id === myPlayerId ? { ...p, ready } : p),
+    });
+    try {
+      const state = await api(`/games/${gameState.gameId}/ready`, 'POST', { playerId: myPlayerId, ready });
+      setGameState(state);
+    } catch (e: any) {
+      setGameState(snapshot);
       setError(e.message);
     }
   }, [gameState, myPlayerId]);
@@ -1008,11 +1022,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       declineTrade,
       chooseTax,
       claimAdReward,
+      setReady,
       clearError: () => setError(null),
       lastDiceRoll,
       leaveGame,
-      setReady,
-      pendingAction,
     }}>
       {children}
     </GameContext.Provider>

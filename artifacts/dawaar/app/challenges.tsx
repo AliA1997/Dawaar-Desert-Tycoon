@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import Colors from '@/constants/colors';
 import { useGame, TOKENS } from '@/context/GameContext';
 import { REGION_CHALLENGES, REWARD_ADVANTAGES, type CountryChallenge, type RegionChallenge } from '@/data/challenges';
+import { ChallengesSkeleton } from '@/components/Skeleton';
 
 const DIFFICULTY_OPTIONS = [
   { id: 'easy' as const,   label: 'Easy',   emoji: '😊' },
@@ -121,8 +122,11 @@ export default function ChallengesScreen() {
           </View>
         )}
 
+        {/* Initial loading skeleton (only when starting a challenge) */}
+        {isLoading && !selectedRegion && <ChallengesSkeleton />}
+
         {/* ── Level 1: Region cards ──────────────────────────────────────────── */}
-        {!selectedRegion && (
+        {!selectedRegion && !isLoading && (
           <>
             <View style={styles.grid}>
               {REGION_CHALLENGES.map(region => (

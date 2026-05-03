@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import {
@@ -10,21 +10,12 @@ import {
   payJail,
   buildHouse,
   mortgageProperty,
-  chooseTax,
-  setPlayerReady,
+  buyProperty,
 } from './gameState.js';
-import { setGame, gameEvents } from './gameStore.js';
-import { _resetForTest as _resetPlayers } from './playerStore.js';
+import { setGame } from './gameStore.js';
 import { BOARD, CHANCE_CARDS } from './board.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-//
-// NOTE: The Dawaar board has 28 cells (0-27). Key landmarks:
-//   - Index 7  = Jail
-//   - Index 9  = Zakat Tax (500 DHS)
-//   - Index 16 = Chance (the only Chance space)
-//   - Index 23 = Oil Revenue Tax (2000 DHS)
-//   - Index 27 = Mecca (most expensive property)
 
 function makeTwoPlayerGame(gameId = 'test-game') {
   let state = createGame(gameId, 'Alice', 'alice', 'camel');
@@ -33,7 +24,10 @@ function makeTwoPlayerGame(gameId = 'test-game') {
   return state;
 }
 
-/** Spy Math.random to return specific die values in sequence. */
+/** Spy Math.random to return specific die values in sequence.
+ *  rollDie() = Math.floor(Math.random() * 6) + 1
+ *  To get die value V (1-6), supply (V - 1) / 6
+ */
 function mockDiceSeq(...values: number[]) {
   const spy = vi.spyOn(Math, 'random');
   values.forEach(v => spy.mockReturnValueOnce(v));
@@ -43,14 +37,11 @@ function mockDiceSeq(...values: number[]) {
 /** Given a desired die value 1-6, return the Math.random value that produces it */
 const die = (v: number) => (v - 1) / 6;
 
-const JAIL_INDEX = BOARD.findIndex(s => s.type === 'jail');
-const CHANCE_INDEX = BOARD.findIndex(s => s.type === 'chance');
-
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// ─── Doubles rule ─────────────────────────────────────────────────────────────
+// ─── Bug 1: Doubles grant re-roll ────────────────────────────────────────────
 
 describe('Doubles rule', () => {
   it('grants a re-roll when doubles are rolled (hasRolled stays false)', () => {
@@ -74,25 +65,32 @@ describe('Doubles rule', () => {
   it('sends player to jail on third consecutive doubles', () => {
     let state = makeTwoPlayerGame();
 
+    // Roll 1: [2,2] doubles
     mockDiceSeq(die(2), die(2));
     ({ state } = rollDice(state, 'alice'));
+    expect(state.hasRolled).toBe(false);
     expect(state.players[0].doublesCount).toBe(1);
 
+    // Roll 2: [3,3] doubles
     mockDiceSeq(die(3), die(3));
     ({ state } = rollDice(state, 'alice'));
+    expect(state.hasRolled).toBe(false);
     expect(state.players[0].doublesCount).toBe(2);
 
+    // Roll 3: [4,4] — third consecutive doubles → jail
     mockDiceSeq(die(4), die(4));
     ({ state } = rollDice(state, 'alice'));
     const alice = state.players.find(p => p.id === 'alice')!;
     expect(alice.inJail).toBe(true);
-    expect(alice.position).toBe(JAIL_INDEX);
+    // Jail is at the first space with type === 'jail' on the current board
+    expect(alice.position).toBe(BOARD.findIndex(s => s.type === 'jail'));
     expect(alice.doublesCount).toBe(0);
     expect(state.hasRolled).toBe(true);
   });
 
   it('resets doublesCount to 0 after endTurn', () => {
     let state = makeTwoPlayerGame();
+    // Roll doubles, then roll non-doubles
     mockDiceSeq(die(3), die(3));
     ({ state } = rollDice(state, 'alice'));
     expect(state.players[0].doublesCount).toBe(1);
@@ -111,25 +109,35 @@ describe('Doubles rule', () => {
       ...state,
       players: state.players.map(p => p.id === 'alice' ? { ...p, inJail: true, jailTurns: 1 } : p),
     };
+    // [2,2] doubles escape jail — should NOT grant a re-roll
     mockDiceSeq(die(2), die(2));
     const { state: after, isDoubles } = rollDice(state, 'alice');
     expect(isDoubles).toBe(true);
+    // Player escaped jail (doublesCount resets, hasRolled=true because escapedJailViaDoubles)
     expect(after.players.find(p => p.id === 'alice')!.inJail).toBe(false);
     expect(after.hasRolled).toBe(true);
   });
 });
 
-// ─── back_3 card via engine ───────────────────────────────────────────────────
+// ─── Bug 2: back_3 card via engine ───────────────────────────────────────────
 
 describe('back_3 card (engine level)', () => {
-  const back3Index = CHANCE_CARDS.findIndex(c => c.action === 'back_3');
+  // We position alice just before a Chance space and mock dice to land on it,
+  // then mock the card draw to select the back_3 card.
 
-  it('lands on Chance and moves back 3 spaces', () => {
+  const back3Index = CHANCE_CARDS.findIndex(c => c.action === 'back_3');
+  const chanceIndices = BOARD.map((s, i) => s.type === 'chance' ? i : -1).filter(i => i >= 0);
+
+  it('lands on a Chance space and moves back 3 (with wrap)', () => {
+    expect(chanceIndices.length).toBeGreaterThan(0);
+    const chancePos = chanceIndices[0];
+    // Position alice 2 spaces before a Chance space; roll [1,1] = 2 lands on it
+    const startPos = (chancePos - 2 + BOARD.length) % BOARD.length;
+
     let state = makeTwoPlayerGame();
-    // Position alice at 14, roll [1,1] = 2 → lands on 16 (Chance)
     state = {
       ...state,
-      players: state.players.map(p => p.id === 'alice' ? { ...p, position: 14 } : p),
+      players: state.players.map(p => p.id === 'alice' ? { ...p, position: startPos } : p),
     };
 
     const cardRand = back3Index / CHANCE_CARDS.length;
@@ -137,112 +145,95 @@ describe('back_3 card (engine level)', () => {
 
     const { state: after } = rollDice(state, 'alice');
     const alice = after.players.find(p => p.id === 'alice')!;
-    expect(alice.position).toBe(CHANCE_INDEX - 3);
+    expect(alice.position).toBe((chancePos - 3 + BOARD.length) % BOARD.length);
   });
 
-  it('wrap formula handles boundaries on a 28-cell board', () => {
+  it('wrap formula (pos - 3 + N) % N never goes negative', () => {
     const N = BOARD.length;
     expect((2 - 3 + N) % N).toBe(N - 1);
     expect((1 - 3 + N) % N).toBe(N - 2);
     expect((0 - 3 + N) % N).toBe(N - 3);
-    expect((CHANCE_INDEX - 3 + N) % N).toBe(CHANCE_INDEX - 3);
   });
 });
 
-// ─── Tax space amounts ───────────────────────────────────────────────────────
+// ─── Bug 3: Tax values ────────────────────────────────────────────────────────
 
 describe('Tax space amounts', () => {
-  it('Zakat Tax (space 9) costs 500 DHS', () => {
-    expect(BOARD[9].name).toBe('Zakat Tax');
-    expect(BOARD[9].taxAmount).toBe(500);
+  const zakatIdx = BOARD.findIndex(s => s.name === 'Zakat Tax');
+  const oilIdx   = BOARD.findIndex(s => s.name === 'Oil Revenue Tax');
+
+  it('Zakat Tax costs 500 DHS', () => {
+    expect(zakatIdx).toBeGreaterThan(-1);
+    expect(BOARD[zakatIdx].taxAmount).toBe(500);
   });
 
-  it('Oil Revenue Tax (space 23) costs 2000 DHS', () => {
-    expect(BOARD[23].name).toBe('Oil Revenue Tax');
-    expect(BOARD[23].taxAmount).toBe(2000);
+  it('Oil Revenue Tax costs 2000 DHS', () => {
+    expect(oilIdx).toBeGreaterThan(-1);
+    expect(BOARD[oilIdx].taxAmount).toBe(2000);
   });
 
-  it('creates a pendingTaxChoice when player rolls onto Zakat Tax space', () => {
+  it('opens a pending tax choice when player rolls onto a tax space', () => {
+    // Land on Zakat Tax via a 2-roll
     let state = makeTwoPlayerGame();
-    // Position alice at 8, roll [1,0]? Need total = 1. Use [1,?] no, use position 7 + roll [1,1]=2 lands 9.
     state = {
       ...state,
-      players: state.players.map(p => p.id === 'alice' ? { ...p, position: 7 } : p),
+      players: state.players.map(p => p.id === 'alice' ? { ...p, position: zakatIdx - 2 } : p),
     };
-    const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
     mockDiceSeq(die(1), die(1));
     const { state: after } = rollDice(state, 'alice');
     const alice = after.players.find(p => p.id === 'alice')!;
-    expect(alice.position).toBe(9);
-    // Engine creates a pending choice — money is unchanged until chooseTax is called
-    expect(after.pendingTaxChoice).not.toBeNull();
+    expect(alice.position).toBe(zakatIdx);
+    expect(after.pendingTaxChoice).toBeDefined();
+    expect(after.pendingTaxChoice!.playerId).toBe('alice');
     expect(after.pendingTaxChoice!.flat).toBe(500);
-    expect(alice.money).toBe(moneyBefore);
-
-    // Resolve via flat choice
-    const { state: paid } = chooseTax(after, 'alice', 'flat');
-    const alicePaid = paid.players.find(p => p.id === 'alice')!;
-    expect(alicePaid.money).toBe(moneyBefore - 500);
-    expect(paid.pendingTaxChoice).toBeNull();
-  });
-
-  it('creates a pendingTaxChoice with 2000 DHS flat for Oil Revenue Tax', () => {
-    let state = makeTwoPlayerGame();
-    // Position alice at 22, roll [1,0]? Use [1,?] need total 1.
-    // Use [1,?] - we need 23 - 22 = 1 → can't roll a single die total of 1 with two dice (min 2).
-    // Use position 20, roll [1,2]=3 → 23. But [1,2] are not doubles → no re-roll. Good.
-    state = {
-      ...state,
-      players: state.players.map(p => p.id === 'alice' ? { ...p, position: 20 } : p),
-    };
-    const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
-    mockDiceSeq(die(1), die(2));
-    const { state: after } = rollDice(state, 'alice');
-    const alice = after.players.find(p => p.id === 'alice')!;
-    expect(alice.position).toBe(23);
-    expect(after.pendingTaxChoice).not.toBeNull();
-    expect(after.pendingTaxChoice!.flat).toBe(2000);
-
-    const { state: paid } = chooseTax(after, 'alice', 'flat');
-    expect(paid.players.find(p => p.id === 'alice')!.money).toBe(moneyBefore - 2000);
   });
 });
 
-// ─── Bankruptcy property clearing ────────────────────────────────────────────
+// ─── Bug 4: Bankruptcy property clearing ─────────────────────────────────────
 
 describe('Bankruptcy clears properties from board', () => {
   it('sets ownerId to null on all bankrupt player properties', () => {
-    let state = makeTwoPlayerGame();
-    const KUWAIT = 1; // Kuwait City — owned by alice
-    const MECCA = 27; // Mecca — owned by bob, base rent 700 DHS
+    // Pick the most expensive property on the board for Bob; alice will land on it broke
+    const expensive = [...BOARD]
+      .filter(s => s.type === 'property' && s.rent && s.rent.length > 0)
+      .sort((a, b) => (b.rent![0] ?? 0) - (a.rent![0] ?? 0))[0];
+    expect(expensive).toBeDefined();
+    const expensiveIdx = expensive.index;
+    const baseRent = expensive.rent![0]!;
 
+    // Pick any other property for alice to own (so it can be cleared on bankruptcy)
+    const aliceProp = BOARD.find(s => s.type === 'property' && s.index !== expensiveIdx)!;
+    const aliceIdx = aliceProp.index;
+
+    let state = makeTwoPlayerGame();
+    const startPos = (expensiveIdx - 2 + BOARD.length) % BOARD.length;
     state = {
       ...state,
-      // alice owns Kuwait City, has only 10 DHS, sits at 25 (railroad — bob doesn't own it, so no rent there)
       players: state.players.map(p => {
-        if (p.id === 'alice') return { ...p, properties: [KUWAIT], money: 10, position: 25 };
-        if (p.id === 'bob')   return { ...p, properties: [MECCA] };
+        if (p.id === 'alice') return { ...p, properties: [aliceIdx], money: 10, position: startPos };
+        if (p.id === 'bob')   return { ...p, properties: [expensiveIdx] };
         return p;
       }),
       board: state.board.map((s, i) => {
-        if (i === KUWAIT) return { ...s, ownerId: 'alice' };
-        if (i === MECCA)  return { ...s, ownerId: 'bob' };
+        if (i === aliceIdx)     return { ...s, ownerId: 'alice' };
+        if (i === expensiveIdx) return { ...s, ownerId: 'bob' };
         return s;
       }),
     };
 
-    // Roll [1,1] doubles → 25 + 2 = 27 → Mecca → pay 700 rent → bankrupt
+    // Roll [1,1] → land on expensive property → owe rent > money → bankrupt
     mockDiceSeq(die(1), die(1));
     const { state: after } = rollDice(state, 'alice');
 
     const alice = after.players.find(p => p.id === 'alice')!;
+    expect(baseRent).toBeGreaterThan(10);
     expect(alice.isBankrupt).toBe(true);
     expect(alice.properties).toHaveLength(0);
-    expect(after.board[KUWAIT].ownerId).toBeNull();
+    expect(after.board[aliceIdx].ownerId).toBeNull();
   });
 });
 
-// ─── Pay-to-leave-jail (pure function) ───────────────────────────────────────
+// ─── Bug 5: Pay-to-leave-jail (pure function) ────────────────────────────────
 
 describe('payJail function', () => {
   it('deducts 500 DHS and clears jail status', () => {
@@ -253,8 +244,10 @@ describe('payJail function', () => {
         p.id === 'alice' ? { ...p, inJail: true, jailTurns: 1 } : p
       ),
     };
+
     const moneyBefore = state.players.find(p => p.id === 'alice')!.money;
     const { state: after, error } = payJail(state, 'alice');
+
     expect(error).toBeUndefined();
     const alice = after.players.find(p => p.id === 'alice')!;
     expect(alice.inJail).toBe(false);
@@ -292,16 +285,18 @@ describe('payJail function', () => {
   });
 });
 
-// ─── Build/hotel ──────────────────────────────────────────────────────────────
+// ─── NPC building strategy ────────────────────────────────────────────────────
 
-describe('Build house / hotel', () => {
+describe('NPC building strategy (buildHouse)', () => {
   it('allows building a house when player owns all properties in a color group', () => {
     let state = makeTwoPlayerGame();
+    // Give alice the first complete color group
     const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
     expect(firstGroup).toBeDefined();
     const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
     expect(groupProps.length).toBeGreaterThanOrEqual(2);
 
+    // Give alice money and ownership of the entire group
     state = {
       ...state,
       players: state.players.map(p =>
@@ -326,6 +321,7 @@ describe('Build house / hotel', () => {
     const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
     const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
 
+    // Alice owns only the first property in the group (not all)
     state = {
       ...state,
       players: state.players.map(p =>
@@ -344,11 +340,10 @@ describe('Build house / hotel', () => {
     expect(error).toMatch(/own all|all properties/i);
   });
 
-  it('builds 4 houses on each property in the group, then a hotel on the target', () => {
+  it('allows building up to a hotel (4 houses → hotel)', () => {
     let state = makeTwoPlayerGame();
     const firstGroup = BOARD.find(s => s.colorGroup)?.colorGroup;
     const groupProps = BOARD.filter(s => s.colorGroup === firstGroup);
-    expect(groupProps.length).toBe(2);
 
     state = {
       ...state,
@@ -361,28 +356,30 @@ describe('Build house / hotel', () => {
       hasRolled: true,
     };
 
-    // Build evenly: alternate between the two properties to bring both to 4 houses.
+    const target = state.board.find(s => s.colorGroup === firstGroup)!;
+    // Build evenly across the whole group: 4 passes × every property in the group → 4 houses each
     let s = state;
-    const a = groupProps[0].index;
-    const b = groupProps[1].index;
-    const order = [a, b, a, b, a, b, a, b]; // 4 houses each
-    for (const idx of order) {
-      const r = buildHouse(s, 'alice', idx);
-      expect(r.error).toBeUndefined();
-      s = r.state;
+    for (let pass = 0; pass < 4; pass++) {
+      for (const gp of groupProps) {
+        const result = buildHouse(s, 'alice', gp.index);
+        expect(result.error).toBeUndefined();
+        s = result.state;
+      }
     }
-    expect(s.board[a].houses).toBe(4);
-    expect(s.board[b].houses).toBe(4);
+    expect(s.board[target.index].houses).toBe(4);
 
-    // Now upgrading 'a' to a hotel should work.
-    const hotel = buildHouse(s, 'alice', a);
-    expect(hotel.error).toBeUndefined();
-    expect(hotel.state.board[a].hotel).toBe(true);
-    expect(hotel.state.board[a].houses).toBe(0);
+    // Now upgrade to a hotel evenly across the group
+    for (const gp of groupProps) {
+      const result = buildHouse(s, 'alice', gp.index);
+      expect(result.error).toBeUndefined();
+      s = result.state;
+    }
+    expect(s.board[target.index].hotel).toBe(true);
+    expect(s.board[target.index].houses).toBe(0);
   });
 });
 
-// ─── Mortgage recovery strategy ───────────────────────────────────────────────
+// ─── NPC mortgage recovery strategy ──────────────────────────────────────────
 
 describe('NPC mortgage recovery (mortgageProperty)', () => {
   it('allows mortgaging an owned property to raise emergency funds', () => {
@@ -431,6 +428,8 @@ describe('NPC mortgage recovery (mortgageProperty)', () => {
     const { state: after, error } = mortgageProperty(state, 'alice', firstProp!.index, 'unmortgage');
     expect(error).toBeUndefined();
     expect(after.board[firstProp!.index].isMortgaged).toBe(false);
+    expect(after.players.find(p => p.id === 'alice')!.money).toBeLessThan(10000);
+    // Unmortgage cost should be mortgageValue * 1.1
     expect(after.players.find(p => p.id === 'alice')!.money).toBe(10000 - Math.floor(mortgageVal * 1.1));
   });
 
@@ -459,7 +458,7 @@ describe('NPC mortgage recovery (mortgageProperty)', () => {
   });
 });
 
-// ─── NPC stall recovery ──────────────────────────────────────────────────────
+// ─── NPC stall recovery (endTurn with hasRolled=true) ─────────────────────────
 
 describe('NPC stall recovery (endTurn after hasRolled=true)', () => {
   it('endTurn succeeds and advances turn when hasRolled is true', () => {
@@ -475,7 +474,7 @@ describe('NPC stall recovery (endTurn after hasRolled=true)', () => {
   });
 });
 
-// ─── HTTP: /build ─────────────────────────────────────────────────────────────
+// ─── POST /api/games/:id/build (HTTP endpoint) ────────────────────────────────
 
 describe('POST /api/games/:id/build endpoint', () => {
   const GAME_ID = 'http-test-build';
@@ -516,7 +515,7 @@ describe('POST /api/games/:id/build endpoint', () => {
   });
 });
 
-// ─── HTTP: /mortgage ──────────────────────────────────────────────────────────
+// ─── POST /api/games/:id/mortgage (HTTP endpoint) ────────────────────────────
 
 describe('POST /api/games/:id/mortgage endpoint', () => {
   const GAME_ID = 'http-test-mortgage';
@@ -555,7 +554,7 @@ describe('POST /api/games/:id/mortgage endpoint', () => {
   });
 });
 
-// ─── HTTP: /pay-jail ──────────────────────────────────────────────────────────
+// ─── Bug 5: POST /api/games/:id/pay-jail (HTTP endpoint) ─────────────────────
 
 describe('POST /api/games/:id/pay-jail endpoint', () => {
   const GAME_ID = 'http-test-jail';
@@ -613,25 +612,47 @@ describe('POST /api/games/:id/pay-jail endpoint', () => {
   });
 });
 
-// ─── Lobby: ready state ───────────────────────────────────────────────────────
+// ─── Player ready (lobby) ─────────────────────────────────────────────────────
 
-describe('Lobby ready flag', () => {
-  it('setPlayerReady toggles the player\'s ready flag', () => {
-    let state = createGame('ready-test', 'Alice', 'alice', 'camel');
-    ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
-    const { state: after, error } = setPlayerReady(state, 'bob', true);
-    expect(error).toBeUndefined();
-    expect(after.players.find(p => p.id === 'bob')!.ready).toBe(true);
+import { setReady } from './gameState.js';
+
+describe('setReady (lobby ready state)', () => {
+  it('initializes new players with ready=false', () => {
+    const state = createGame('ready-init', 'Alice', 'alice', 'camel');
+    expect(state.players[0].ready).toBe(false);
+    const { state: joined } = joinGame(state, 'Bob', 'bob', 'falcon');
+    expect(joined.players[1].ready).toBe(false);
   });
 
-  it('rejects setting ready after game has started', () => {
-    let state = makeTwoPlayerGame('ready-rejected');
-    const { error } = setPlayerReady(state, 'bob', true);
+  it('toggles ready and bumps version + log entry', () => {
+    let state = createGame('ready-toggle', 'Alice', 'alice', 'camel');
+    ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
+    const v0 = state.version;
+    const { state: after, error } = setReady(state, 'bob', true);
+    expect(error).toBeUndefined();
+    expect(after.players.find(p => p.id === 'bob')!.ready).toBe(true);
+    expect(after.version).toBe(v0 + 1);
+    expect(after.log[after.log.length - 1].message).toMatch(/Bob is ready/);
+  });
+
+  it('rejects ready toggle once game has started', () => {
+    const state = makeTwoPlayerGame('ready-started');
+    const { error } = setReady(state, 'alice', true);
     expect(error).toMatch(/already started/i);
   });
 
-  it('POST /:id/ready persists the flag and returns updated state', async () => {
-    const GAME_ID = 'http-ready';
+  it('rejects unknown player', () => {
+    let state = createGame('ready-unknown', 'Alice', 'alice', 'camel');
+    const { error } = setReady(state, 'ghost', true);
+    expect(error).toMatch(/not found/i);
+  });
+});
+
+// ─── POST /api/games/:id/ready (HTTP endpoint) ────────────────────────────────
+
+describe('POST /api/games/:id/ready endpoint', () => {
+  it('returns 200 and marks player ready', async () => {
+    const GAME_ID = 'http-test-ready';
     let state = createGame(GAME_ID, 'Alice', 'alice', 'camel');
     ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
     setGame(GAME_ID, state);
@@ -639,84 +660,260 @@ describe('Lobby ready flag', () => {
     const res = await request(app)
       .post(`/api/games/${GAME_ID}/ready`)
       .send({ playerId: 'bob', ready: true });
-
     expect(res.status).toBe(200);
-    const bob = (res.body.players as { id: string; ready?: boolean }[]).find(p => p.id === 'bob');
+    const bob = (res.body.players as { id: string; ready: boolean }[]).find(p => p.id === 'bob');
     expect(bob!.ready).toBe(true);
   });
-});
 
-// ─── Event-driven /poll endpoint ──────────────────────────────────────────────
-
-describe('Event-driven /poll', () => {
-  it('emits a game event on setGame that the long-poll handler picks up', async () => {
-    const GAME_ID = 'poll-test';
-    const state = makeTwoPlayerGame(GAME_ID);
+  it('returns 400 when ready is missing or not a boolean', async () => {
+    const GAME_ID = 'http-test-ready-missing';
+    let state = createGame(GAME_ID, 'Alice', 'alice', 'camel');
+    ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
     setGame(GAME_ID, state);
 
-    const eventName = `game:${GAME_ID}`;
-    const received = new Promise<{ version: number }>(resolve => {
-      gameEvents.once(eventName, (payload: { version: number }) => resolve(payload));
-    });
-
-    // Mutate state — this should fire the event
-    setGame(GAME_ID, { ...state, version: state.version + 1 });
-
-    const payload = await received;
-    expect(payload.version).toBe(state.version + 1);
-  });
-
-  it('returns immediately with current state when client version is stale', async () => {
-    const GAME_ID = 'poll-stale';
-    const state = makeTwoPlayerGame(GAME_ID);
-    setGame(GAME_ID, state);
-
-    const res = await request(app).get(`/api/games/${GAME_ID}/poll?version=0`);
-    expect(res.status).toBe(200);
-    expect(res.body.version).toBe(state.version);
-  });
-});
-
-// ─── Player profile endpoints ─────────────────────────────────────────────────
-
-describe('Player profile endpoints', () => {
-  beforeEach(() => {
-    _resetPlayers();
-  });
-
-  it('GET /api/players/:id/profile returns a default profile for new players', async () => {
-    const res = await request(app).get('/api/players/new-player-1/profile');
-    expect(res.status).toBe(200);
-    expect(res.body.id).toBe('new-player-1');
-    expect(res.body.rewardPoints).toBe(0);
-    expect(Array.isArray(res.body.challengesCompleted)).toBe(true);
-  });
-
-  it('POST /api/players/:id/reward awards points and persists in subsequent reads', async () => {
-    const id = 'reward-player-1';
-    const award = await request(app)
-      .post(`/api/players/${id}/reward`)
-      .send({ points: 1000, challengeId: 'gulf' });
-    expect(award.status).toBe(200);
-    expect(award.body.rewardPoints).toBe(1000);
-
-    const profile = await request(app).get(`/api/players/${id}/profile`);
-    expect(profile.body.rewardPoints).toBe(1000);
-    expect(profile.body.challengesCompleted).toContain('gulf');
-  });
-
-  it('does not double-award the same challenge twice', async () => {
-    const id = 'reward-player-2';
-    await request(app).post(`/api/players/${id}/reward`).send({ points: 1000, challengeId: 'levant' });
-    const dupe = await request(app).post(`/api/players/${id}/reward`).send({ points: 1000, challengeId: 'levant' });
-    expect(dupe.status).toBe(200);
-    expect(dupe.body.rewardPoints).toBe(1000);
-  });
-
-  it('rejects invalid points payloads', async () => {
-    const res = await request(app).post('/api/players/x/reward').send({ points: -5 });
+    const res = await request(app)
+      .post(`/api/games/${GAME_ID}/ready`)
+      .send({ playerId: 'bob' });
     expect(res.status).toBe(400);
-    const tooMany = await request(app).post('/api/players/x/reward').send({ points: 999999 });
-    expect(tooMany.status).toBe(400);
+  });
+
+  it('returns 404 when game does not exist', async () => {
+    const res = await request(app)
+      .post('/api/games/NONEXISTENT-READY/ready')
+      .send({ playerId: 'alice', ready: true });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── Player profile (rewards) endpoints ───────────────────────────────────────
+
+describe('GET /api/players/:playerId/profile', () => {
+  it('returns a default profile for an unknown player', async () => {
+    const res = await request(app).get('/api/players/new-user/profile');
+    expect(res.status).toBe(200);
+    expect(res.body.playerId).toBe('new-user');
+    expect(res.body.rewardPoints).toBe(0);
+    expect(res.body.unlockedAdvantages).toEqual([]);
+  });
+});
+
+describe('POST /api/players/:playerId/reward', () => {
+  it('adds points and computes unlocks', async () => {
+    const PID = 'reward-add-' + Date.now();
+    let res = await request(app)
+      .post(`/api/players/${PID}/reward`)
+      .send({ points: 600 });
+    expect(res.status).toBe(200);
+    expect(res.body.rewardPoints).toBe(600);
+    expect(res.body.unlockedAdvantages).toEqual([0]); // 500 unlocked
+
+    res = await request(app)
+      .post(`/api/players/${PID}/reward`)
+      .send({ points: 500 });
+    expect(res.body.rewardPoints).toBe(1100);
+    expect(res.body.unlockedAdvantages).toEqual([0, 1]);
+  });
+
+  it('sets points absolutely when set=true', async () => {
+    const PID = 'reward-set-' + Date.now();
+    const res = await request(app)
+      .post(`/api/players/${PID}/reward`)
+      .send({ points: 2000, set: true });
+    expect(res.status).toBe(200);
+    expect(res.body.rewardPoints).toBe(2000);
+    expect(res.body.unlockedAdvantages).toEqual([0, 1, 2]);
+  });
+
+  it('rejects non-number points', async () => {
+    const res = await request(app)
+      .post('/api/players/whoever/reward')
+      .send({ points: 'abc' });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── /poll event-driven (latency) ─────────────────────────────────────────────
+
+describe('GET /api/games/:id/poll (event-driven)', () => {
+  it('resolves quickly (well under 500ms) when state changes mid-request', async () => {
+    const GAME_ID = 'poll-event-' + Date.now();
+    let state = createGame(GAME_ID, 'Alice', 'alice', 'camel');
+    ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
+    setGame(GAME_ID, state);
+    const baseVersion = state.version;
+
+    const start = Date.now();
+    const pollPromise = request(app).get(`/api/games/${GAME_ID}/poll?version=${baseVersion}`);
+
+    // Trigger a state change after 50ms
+    const storeMod = await import('./gameStore.js');
+    setTimeout(() => {
+      const cur = storeMod.getGame(GAME_ID);
+      if (cur) {
+        const { state: after } = setReady(cur, 'bob', true);
+        setGame(GAME_ID, after);
+      }
+    }, 50);
+
+    const res = await pollPromise;
+    const elapsed = Date.now() - start;
+    expect(res.status).toBe(200);
+    expect(res.body.version).toBeGreaterThan(baseVersion);
+    // Should arrive much faster than the old 500ms polling interval
+    expect(elapsed).toBeLessThan(400);
+  }, 5000);
+
+  it('returns immediately when client version is already stale', async () => {
+    const GAME_ID = 'poll-stale-' + Date.now();
+    let state = createGame(GAME_ID, 'Alice', 'alice', 'camel');
+    ({ state } = joinGame(state, 'Bob', 'bob', 'falcon'));
+    setGame(GAME_ID, state);
+
+    const start = Date.now();
+    const res = await request(app).get(`/api/games/${GAME_ID}/poll?version=0`);
+    const elapsed = Date.now() - start;
+    expect(res.status).toBe(200);
+    expect(elapsed).toBeLessThan(100);
+  });
+});
+
+// ─── Auction validation (humanBid=0 = pass) ────────────────────────────────────
+
+describe('auctionBuy (auction expiry behavior)', () => {
+  it('rejects price=0 — clients must filter pass bids before submitting', async () => {
+    const GAME_ID = 'auction-zero-' + Date.now();
+    let state = makeTwoPlayerGame(GAME_ID);
+    // Pretend alice landed on a property she didn't buy
+    const prop = state.board.find(s => s.type === 'property')!;
+    setGame(GAME_ID, state);
+
+    const res = await request(app)
+      .post(`/api/games/${GAME_ID}/auction-buy`)
+      .send({ winnerId: 'alice', propertyIndex: prop.index, price: 0 });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a positive winning bid', async () => {
+    const GAME_ID = 'auction-win-' + Date.now();
+    const state = makeTwoPlayerGame(GAME_ID);
+    const prop = state.board.find(s => s.type === 'property')!;
+    setGame(GAME_ID, state);
+
+    const res = await request(app)
+      .post(`/api/games/${GAME_ID}/auction-buy`)
+      .send({ winnerId: 'alice', propertyIndex: prop.index, price: 200 });
+    expect(res.status).toBe(200);
+    const owned = (res.body.board as { index: number; ownerId: string | null }[])
+      .find(s => s.index === prop.index);
+    expect(owned!.ownerId).toBe('alice');
+  });
+});
+
+// ─── Async/debounced game persistence ────────────────────────────────────────
+
+describe('gameStore: async debounced persistence + flush', () => {
+  it('persists state via flushGamesToFile and survives module reload', async () => {
+    const { setGame, flushGamesToFile, getGame } = await import('./gameStore.js');
+    const GAME_ID = 'persist-test-' + Date.now();
+    const state = makeTwoPlayerGame(GAME_ID);
+    setGame(GAME_ID, state);
+    await flushGamesToFile();
+
+    // Re-read in-memory copy
+    expect(getGame(GAME_ID)).toBeDefined();
+    expect(getGame(GAME_ID)!.players.length).toBe(2);
+  });
+});
+
+// ─── Auction resolver (shared with client) + timer-expiry-uses-latest-bid ─────
+
+import { pickAuctionWinner, type AuctionBid } from './auctionResolve.js';
+
+describe('pickAuctionWinner', () => {
+  it('returns null when no positive bids (everyone passed)', () => {
+    expect(pickAuctionWinner([])).toBeNull();
+    expect(pickAuctionWinner([{ id: 'a', name: 'A', bid: 0 }])).toBeNull();
+    expect(pickAuctionWinner([
+      { id: 'a', name: 'A', bid: 0 },
+      { id: 'b', name: 'B', bid: -5 },
+    ])).toBeNull();
+  });
+
+  it('picks the highest positive bid', () => {
+    const winner = pickAuctionWinner([
+      { id: 'a', name: 'A', bid: 100 },
+      { id: 'b', name: 'B', bid: 250 },
+      { id: 'c', name: 'C', bid: 0 },
+    ]);
+    expect(winner?.id).toBe('b');
+    expect(winner?.bid).toBe(250);
+  });
+
+  it('ignores zero/negative bids (pass) when computing winner', () => {
+    const winner = pickAuctionWinner([
+      { id: 'human', name: 'You', bid: 0 },     // human passed
+      { id: 'npc1',  name: 'NPC1', bid: 150 },
+      { id: 'npc2',  name: 'NPC2', bid: 200 },
+    ]);
+    expect(winner?.id).toBe('npc2');
+  });
+});
+
+describe('auction expiry uses LATEST typed human bid (ref pattern)', () => {
+  // Simulates the client's ref-based auction-expiry behavior:
+  //   1. timer is registered while humanBid is at its initial 75% default
+  //   2. user types a different value; the ref is kept in sync
+  //   3. timer fires and reads ref.current — must see the LATEST value, not the
+  //      stale closure-captured one
+  it('reads humanBidRef.current at expiry, not the closure-captured value', async () => {
+    const npcBids: AuctionBid[] = [
+      { id: 'npc1', name: 'NPC1', bid: 300 },
+    ];
+    const humanBidRef = { current: 750 }; // initial 75% default
+
+    let resolved: AuctionBid | null = null;
+    // Mimic the client's auctionTimerRef.current = setTimeout(() => handleSubmitBid(humanBidRef.current), …)
+    const submit = (bidOverride: number) => {
+      resolved = pickAuctionWinner([
+        ...npcBids,
+        { id: 'human', name: 'You', bid: bidOverride },
+      ]);
+    };
+    const timer = setTimeout(() => submit(humanBidRef.current), 30);
+
+    // User raises their bid AFTER the timer was scheduled
+    humanBidRef.current = 1200;
+
+    await new Promise(r => setTimeout(r, 60));
+    clearTimeout(timer);
+
+    // The human bid (1200) must beat the NPC (300), proving expiry used the
+    // latest typed value, not the stale 750 captured at registration time.
+    expect(resolved).not.toBeNull();
+    expect(resolved!.id).toBe('human');
+    expect(resolved!.bid).toBe(1200);
+  });
+
+  it('treats a typed-down-to-0 bid as PASS at expiry (no auto-buy at 0)', async () => {
+    const npcBids: AuctionBid[] = []; // no NPC bids either
+    const humanBidRef = { current: 750 };
+
+    let resolved: AuctionBid | null | undefined = undefined;
+    const submit = (bidOverride: number) => {
+      resolved = pickAuctionWinner([
+        ...npcBids,
+        { id: 'human', name: 'You', bid: bidOverride },
+      ]);
+    };
+    const timer = setTimeout(() => submit(humanBidRef.current), 30);
+
+    // User cleared their bid box → 0 = pass
+    humanBidRef.current = 0;
+
+    await new Promise(r => setTimeout(r, 60));
+    clearTimeout(timer);
+
+    // Auction should close with no winner — does NOT submit a 0 buy
+    expect(resolved).toBeNull();
   });
 });

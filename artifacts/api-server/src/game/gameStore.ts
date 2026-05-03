@@ -1,7 +1,8 @@
 import fs from 'fs';
+import { promises as fsp } from 'fs';
 import path from 'path';
-import { EventEmitter } from 'events';
 import { fileURLToPath } from 'url';
+import { EventEmitter } from 'events';
 import { GameState } from './gameState.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,7 +17,7 @@ gameEvents.setMaxListeners(0);
 let dirty = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let writingPromise: Promise<void> | null = null;
-const WRITE_DEBOUNCE_MS = 250;
+const DEBOUNCE_MS = 250;
 
 function loadGamesFromFile(): void {
   try {
@@ -34,74 +35,38 @@ function loadGamesFromFile(): void {
   }
 }
 
-async function writeGamesNow(): Promise<void> {
-  if (!fs.existsSync(DATA_DIR)) {
-    await fs.promises.mkdir(DATA_DIR, { recursive: true });
-  }
-  const obj: Record<string, GameState> = {};
-  for (const [id, state] of games.entries()) {
-    obj[id] = state;
-  }
-  const tmpFile = GAMES_FILE + '.tmp';
-  await fs.promises.writeFile(tmpFile, JSON.stringify(obj), 'utf-8');
-  await fs.promises.rename(tmpFile, GAMES_FILE);
-}
-
-async function flushIfDirty(): Promise<void> {
-  if (!dirty) return;
-  if (writingPromise) {
-    await writingPromise;
-  }
-  if (!dirty) return;
+async function writeNow(): Promise<void> {
   dirty = false;
-  writingPromise = writeGamesNow().catch(() => {
-    dirty = true;
-  }).finally(() => {
-    writingPromise = null;
-  });
-  await writingPromise;
+  try {
+    await fsp.mkdir(DATA_DIR, { recursive: true });
+    const obj: Record<string, GameState> = {};
+    for (const [id, state] of games.entries()) obj[id] = state;
+    const tmp = GAMES_FILE + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify(obj), 'utf-8');
+    await fsp.rename(tmp, GAMES_FILE);
+  } catch {
+    // Ignore write errors — in-memory state still works
+  }
 }
 
-function scheduleSave(): void {
+function scheduleWrite(): void {
   dirty = true;
   if (writeTimer) return;
   writeTimer = setTimeout(() => {
     writeTimer = null;
-    flushIfDirty().catch(() => {});
-  }, WRITE_DEBOUNCE_MS);
+    writingPromise = writeNow().finally(() => { writingPromise = null; });
+  }, DEBOUNCE_MS);
 }
 
-// Load persisted games on server start
+export async function flushGamesToFile(): Promise<void> {
+  if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
+  if (writingPromise) {
+    try { await writingPromise; } catch { /* ignore */ }
+  }
+  if (dirty) await writeNow();
+}
+
 loadGamesFromFile();
-
-// Flush on shutdown signals
-async function shutdown() {
-  if (writeTimer) {
-    clearTimeout(writeTimer);
-    writeTimer = null;
-  }
-  try {
-    await flushIfDirty();
-  } catch {
-    // ignore
-  }
-}
-
-let shutdownRegistered = false;
-function registerShutdownHandlers() {
-  if (shutdownRegistered) return;
-  shutdownRegistered = true;
-  for (const sig of ['SIGTERM', 'SIGINT'] as const) {
-    process.once(sig, async () => {
-      await shutdown();
-      process.exit(0);
-    });
-  }
-  process.once('beforeExit', () => { shutdown(); });
-}
-if (process.env.NODE_ENV !== 'test') {
-  registerShutdownHandlers();
-}
 
 export function getGame(gameId: string): GameState | undefined {
   return games.get(gameId);
@@ -109,8 +74,15 @@ export function getGame(gameId: string): GameState | undefined {
 
 export function setGame(gameId: string, state: GameState): void {
   games.set(gameId, state);
-  scheduleSave();
-  gameEvents.emit(`game:${gameId}`, state);
+  scheduleWrite();
+  gameEvents.emit('change', gameId, state);
+}
+
+export function deleteGame(gameId: string): void {
+  if (games.delete(gameId)) {
+    scheduleWrite();
+    gameEvents.emit('change', gameId);
+  }
 }
 
 export function generateGameId(): string {
@@ -122,6 +94,15 @@ export function generateGameId(): string {
   return id;
 }
 
-export async function flushGamesForTest(): Promise<void> {
-  await flushIfDirty();
+// Graceful shutdown — flush pending writes before exit. Skip in test runs.
+const isTest = !!process.env.VITEST || process.env.NODE_ENV === 'test';
+let shuttingDown = false;
+async function gracefulShutdown(signal: NodeJS.Signals) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { await flushGamesToFile(); } finally { process.exit(0); }
+}
+if (!isTest) {
+  process.once('SIGTERM', gracefulShutdown);
+  process.once('SIGINT', gracefulShutdown);
 }

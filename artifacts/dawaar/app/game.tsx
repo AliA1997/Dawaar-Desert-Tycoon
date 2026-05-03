@@ -35,6 +35,7 @@ import SubscribeModal from '@/components/SubscribeModal';
 import TradeModal from '@/components/TradeModal';
 import { GameBoard, GROUP_COLORS } from '@/components/Board';
 import PropertyCard from '@/components/PropertyCard';
+import { BoardSkeleton } from '@/components/Skeleton';
 
 const DICE_GIF = require('../assets/dice.gif');
 
@@ -149,6 +150,10 @@ export default function GameScreen() {
   const [showBuild, setShowBuild] = useState(false);
   const [showAuction, setShowAuction] = useState(false);
   const [humanBid, setHumanBid] = useState(0);
+  // Mirror humanBid into a ref so timer callbacks always read the LATEST typed value
+  // (timer callbacks captured at registration time would otherwise see a stale closure).
+  const humanBidRef = useRef(0);
+  useEffect(() => { humanBidRef.current = humanBid; }, [humanBid]);
   const [npcAuctionBids, setNpcAuctionBids] = useState<Array<{ id: string; name: string; color: string; bid: number }>>([]);
   const [auctionPhase, setAuctionPhase] = useState<'bidding' | 'resolved'>('bidding');
   const [auctionWinner, setAuctionWinner] = useState<{ id: string; name: string; bid: number } | null>(null);
@@ -421,7 +426,9 @@ export default function GameScreen() {
     }
   }, [gameState?.status]);
 
-  if (!gameState) return null;
+  if (!gameState) {
+    return <BoardSkeleton />;
+  }
 
   const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
   const mySpace = myPlayer ? gameState.board[myPlayer.position] : null;
@@ -474,16 +481,16 @@ export default function GameScreen() {
       }
     }, 1000);
 
-    auctionTimerRef.current = setTimeout(async () => {
-      // On expire: submit whatever the user typed in (treat 0 as a pass)
-      await handleSubmitBid(humanBid);
+    auctionTimerRef.current = setTimeout(() => {
+      // Auto-resolve when timer expires. Read the LATEST typed value via the ref
+      // (the closure-captured `humanBid` would be stale).
+      handleSubmitBid(humanBidRef.current);
     }, 1000 * 31);
   };
 
   const handleSubmitBid = async (bidOverride?: number) => {
     if (!mySpace || !myPlayerId || !myPlayer) return;
-    // Cancel both the countdown ticker and the 31s expire timer immediately so
-    // a manual submit does not race with the auto-expire.
+    // Cancel pending auto-resolve / countdown timers so we don't double-submit
     if (auctionTimerRef.current) {
       clearTimeout(auctionTimerRef.current);
       auctionTimerRef.current = null;
@@ -492,10 +499,21 @@ export default function GameScreen() {
       clearInterval(auctionCountdownTimerRef.current);
       auctionCountdownTimerRef.current = null;
     }
-    const finalHumanBid = typeof bidOverride === 'number' ? bidOverride : humanBid;
-    const myBid = { id: myPlayerId, name: 'You', color: myPlayer.color, bid: finalHumanBid };
-    const allBids = [...npcAuctionBids, myBid];
-    const winner = allBids.reduce((best, b) => b.bid > best.bid ? b : best, allBids[0]);
+
+    const effectiveBid = typeof bidOverride === 'number' ? bidOverride : humanBidRef.current;
+    const myBid = { id: myPlayerId, name: 'You', color: myPlayer.color, bid: effectiveBid };
+    // 0 = pass; only positive bids participate
+    const allBids = [...npcAuctionBids, myBid].filter(b => b.bid > 0);
+
+    if (allBids.length === 0) {
+      // Everyone passed — close auction without buying
+      setAuctionWinner(null);
+      setAuctionPhase('resolved');
+      setTimeout(() => clearAuctionState(), 1800);
+      return;
+    }
+
+    const winner = allBids.reduce((best, b) => (b.bid > best.bid ? b : best), allBids[0]);
     setAuctionWinner(winner);
     setAuctionPhase('resolved');
     await auctionBuy(mySpace.index, winner.id, winner.bid);
@@ -578,13 +596,8 @@ export default function GameScreen() {
         />
       </View>
 
-      {/* ── Landing card ── rendered as a Modal so it always layers above other modals ── */}
-      <Modal
-        visible={!!((suspenseCard && suspensePlayer) || (landingCard && landingPlayer))}
-        transparent
-        animationType="none"
-        onRequestClose={dismissLanding}
-      >
+      {/* ── Landing card ── slides up over the status bar when a piece lands ── */}
+      {(suspenseCard && suspensePlayer) || (landingCard && landingPlayer) ? (
         <Animated.View style={[gameStyles.landingWrap, landingCardStyle]} pointerEvents="box-none">
           {suspenseCard && suspensePlayer && !landingCard ? (
             /* ── Suspense phase: hide what the player landed on ── */
@@ -649,7 +662,7 @@ export default function GameScreen() {
             })()
           ) : null}
         </Animated.View>
-      </Modal>
+      ) : null}
 
       {/* My status */}
       {myPlayer && (
@@ -1744,7 +1757,8 @@ const gameStyles = StyleSheet.create({
     bottom: 160,
     left: 12,
     right: 12,
-    zIndex: 200,
+    zIndex: 1000,
+    elevation: 30,
   },
   landingCard: {
     backgroundColor: '#0D1826',
