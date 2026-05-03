@@ -1,4 +1,5 @@
-import { buildBoard, buildBoard28 } from "../../challengeBoards";
+import { buildBoard } from "../../challengeBoards";
+import { buildBoard28 } from "../../boardBuilder28";
 
 // ─── GCC: Oman ────────────────────────────────────────────────────────────────
 const OMAN_BOARD = buildBoard28(

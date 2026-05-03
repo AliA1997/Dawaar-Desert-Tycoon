@@ -1,4 +1,4 @@
-import { buildBoard28 } from "../../challengeBoards";
+import { buildBoard28 } from "../../boardBuilder28";
 
 // ─── South Asia: India (cities with significant Muslim population) ─────────────
 const SOUTHASIA_INDIA_BOARD = buildBoard28(
