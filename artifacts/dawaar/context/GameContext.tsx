@@ -238,7 +238,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           setGameState(data);
           if (data.diceRoll) setLastDiceRoll(data.diceRoll);
           if (data.status !== 'finished') {
-            pollingRef.current = setTimeout(() => startPolling(gameId, data.version), 500);
+            // Server uses event-driven long-polling — re-poll immediately so
+            // the next state delta surfaces as soon as the server emits.
+            pollingRef.current = setTimeout(() => startPolling(gameId, data.version), 0);
           }
         } else {
           pollingRef.current = setTimeout(() => startPolling(gameId, version), 2000);

@@ -365,6 +365,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 }
 
 function NameInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { myPlayerName } = useGame();
   return (
     <View style={styles.inputGroup}>
       <View style={styles.labelRow}>
