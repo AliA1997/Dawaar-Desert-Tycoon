@@ -314,7 +314,11 @@ export default function GameScreen() {
                 setLandingPlayer(player);
                 setLastCardText(extractedCardText);
                 setLastCardType(cardType);
-                // Human player must close manually — no auto-dismiss
+                // Chance/Community cards stay open until manually closed;
+                // all other tiles auto-dismiss after 4 s
+                if (!extractedCardText) {
+                  landingDismissRef.current = setTimeout(dismissLanding, 4000);
+                }
               }, 3000);
             } else {
               // ── Instant reveal for NPC moves ──
@@ -585,9 +589,9 @@ export default function GameScreen() {
           ) : landingCard && landingPlayer ? (
             /* ── Full reveal ── */
             (() => {
-              const isMyCard = landingPlayer.id === myPlayerId;
-              const CardContainer = isMyCard ? View : TouchableOpacity;
-              const cardContainerProps = isMyCard
+              const isMyChanceCard = landingPlayer.id === myPlayerId && !!lastCardText;
+              const CardContainer = isMyChanceCard ? View : TouchableOpacity;
+              const cardContainerProps = isMyChanceCard
                 ? {}
                 : { onPress: dismissLanding, activeOpacity: 0.92 };
               return (
@@ -598,7 +602,7 @@ export default function GameScreen() {
                   {landingCard.colorGroup && (
                     <View style={[gameStyles.landingStripe, { backgroundColor: GROUP_COLORS[landingCard.colorGroup] }]} />
                   )}
-                  {isMyCard && (
+                  {isMyChanceCard && (
                     <TouchableOpacity onPress={dismissLanding} style={gameStyles.landingCloseBtn} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}>
                       <Ionicons name="close" size={20} color="#9CA3AF" />
                     </TouchableOpacity>
@@ -607,7 +611,7 @@ export default function GameScreen() {
                     <Text style={gameStyles.landingEmoji}>{getLandingEmoji(landingCard)}</Text>
                     <View style={gameStyles.landingTexts}>
                       <Text style={[gameStyles.landingWho, { color: landingPlayer.color }]}>
-                        {isMyCard ? 'You landed on' : `${landingPlayer.name} landed on`}
+                        {landingPlayer.id === myPlayerId ? 'You landed on' : `${landingPlayer.name} landed on`}
                       </Text>
                       <Text style={gameStyles.landingName}>{landingCard.name}</Text>
                       <Text style={gameStyles.landingCtx}>
@@ -623,7 +627,7 @@ export default function GameScreen() {
                       )}
                     </View>
                   </View>
-                  {!isMyCard && <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>}
+                  {!isMyChanceCard && <Text style={gameStyles.landingDismissTip}>tap to dismiss</Text>}
                 </CardContainer>
               );
             })()
