@@ -1,5 +1,5 @@
 import { buildBoard } from "../../challengeBoards";
-import { buildBoard28 } from "../../boardBuilder28";
+import { buildBoard28 } from "../../builder28.js";
 
 
 

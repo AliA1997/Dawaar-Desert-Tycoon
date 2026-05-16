@@ -1,7 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+// Prefer an explicit override (set in .env when running locally), otherwise
+// fall back to the Replit dev domain pattern used in the hosted workspace.
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL
+  ?? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 export interface Player {
   id: string;

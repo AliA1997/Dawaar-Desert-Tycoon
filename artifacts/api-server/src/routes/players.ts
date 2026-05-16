@@ -1,5 +1,5 @@
 import { Router, type IRouter } from 'express';
-import { getProfile, addRewardPoints, setRewardPoints } from '../game/playerStore.js';
+import { getProfile, addRewardPoints, setRewardPoints } from '../domains/players/profileStore.js';
 
 const router: IRouter = Router();
 
