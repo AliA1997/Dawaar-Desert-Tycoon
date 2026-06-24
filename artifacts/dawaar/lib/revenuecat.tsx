@@ -19,7 +19,10 @@ export function initializeRevenueCat() {
 
 type SubscriptionContextValue = {
   customerInfo: null;
-  offerings: null;
+  // `any` while RevenueCat is stubbed/disabled — call sites read the real
+  // offerings shape (offerings.current.availablePackages…), which a literal
+  // `null` type would reject. Restore the real type when re-enabling.
+  offerings: any;
   isSubscribed: boolean;
   isLoading: boolean;
   purchase: (pkg: any) => Promise<null>;

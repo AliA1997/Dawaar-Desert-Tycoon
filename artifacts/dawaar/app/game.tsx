@@ -586,6 +586,11 @@ export default function GameScreen() {
         </View>
       </View>
 
+w      <ScrollView
+        style={gameStyles.scrollArea}
+        contentContainerStyle={gameStyles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* Board */}
       <View style={gameStyles.boardContainer}>
         <GameBoard
@@ -596,7 +601,49 @@ export default function GameScreen() {
         />
       </View>
 
-      {/* ── Landing card ── slides up over the status bar when a piece lands ── */}
+      {/* My status */}
+      {myPlayer && (
+        <View style={gameStyles.myStatus}>
+          <View style={gameStyles.myStatusLeft}>
+            <View style={[gameStyles.tokenBg, { backgroundColor: myPlayer.color + '22' }]}>
+              <Image source={getTokenImage(myPlayer.token)} style={gameStyles.statusTokenImg} />
+            </View>
+            <View>
+              <Text style={gameStyles.myMoney}>{myPlayer.money.toLocaleString()} DHS</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                {mySpace && <Text style={gameStyles.myPosition}>{mySpace.name}</Text>}
+                {myPlayer.inJail && (
+                  <Text style={gameStyles.jailBadge}>🔒 In Jail</Text>
+                )}
+              </View>
+            </View>
+          </View>
+          {lastDiceRoll && (
+            <DiceDisplay dice={lastDiceRoll} />
+          )}
+        </View>
+      )}
+
+      {/* Error */}
+      {error && (
+        <TouchableOpacity style={gameStyles.errorBanner} onPress={clearError}>
+          <Ionicons name="alert-circle" size={14} color="#EF4444" />
+          <Text style={gameStyles.errorText}>{error}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Doubles toast — slides in when player earns a re-roll */}
+      {doublesGranted && !gameState.hasRolled && isMyTurn && (
+        <View style={gameStyles.doublesToast}>
+          <Ionicons name="sparkles" size={15} color={Colors.gold} />
+          <Text style={gameStyles.doublesToastText}>You rolled doubles! Roll again!</Text>
+        </View>
+      )}
+      </ScrollView>
+
+      {/* ── Landing card ── slides up over the status bar when a piece lands ──
+           Absolutely positioned overlay: must stay a direct child of the root
+           container (not inside the ScrollView) so it anchors to the viewport. */}
       {(suspenseCard && suspensePlayer) || (landingCard && landingPlayer) ? (
         <Animated.View style={[gameStyles.landingWrap, landingCardStyle]} pointerEvents="box-none">
           {suspenseCard && suspensePlayer && !landingCard ? (
@@ -663,45 +710,6 @@ export default function GameScreen() {
           ) : null}
         </Animated.View>
       ) : null}
-
-      {/* My status */}
-      {myPlayer && (
-        <View style={gameStyles.myStatus}>
-          <View style={gameStyles.myStatusLeft}>
-            <View style={[gameStyles.tokenBg, { backgroundColor: myPlayer.color + '22' }]}>
-              <Image source={getTokenImage(myPlayer.token)} style={gameStyles.statusTokenImg} />
-            </View>
-            <View>
-              <Text style={gameStyles.myMoney}>{myPlayer.money.toLocaleString()} DHS</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
-                {mySpace && <Text style={gameStyles.myPosition}>{mySpace.name}</Text>}
-                {myPlayer.inJail && (
-                  <Text style={gameStyles.jailBadge}>🔒 In Jail</Text>
-                )}
-              </View>
-            </View>
-          </View>
-          {lastDiceRoll && (
-            <DiceDisplay dice={lastDiceRoll} />
-          )}
-        </View>
-      )}
-
-      {/* Error */}
-      {error && (
-        <TouchableOpacity style={gameStyles.errorBanner} onPress={clearError}>
-          <Ionicons name="alert-circle" size={14} color="#EF4444" />
-          <Text style={gameStyles.errorText}>{error}</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Doubles toast — slides in when player earns a re-roll */}
-      {doublesGranted && !gameState.hasRolled && isMyTurn && (
-        <View style={gameStyles.doublesToast}>
-          <Ionicons name="sparkles" size={15} color={Colors.gold} />
-          <Text style={gameStyles.doublesToastText}>You rolled doubles! Roll again!</Text>
-        </View>
-      )}
 
       {/* Actions Panel */}
       <View style={[gameStyles.actionsPanel, { paddingBottom: botPad + 8 }]}>
@@ -989,7 +997,7 @@ export default function GameScreen() {
                 </View>
                 <TouchableOpacity
                   style={gameStyles.auctionSubmitBtn}
-                  onPress={handleSubmitBid}
+                  onPress={() => handleSubmitBid()}
                   disabled={humanBid <= 0}
                 >
                   <LinearGradient colors={[Colors.gold, '#A07830']} style={gameStyles.auctionSubmitGrad}>
@@ -1395,6 +1403,13 @@ const gameStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.darkBg,
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 8,
   },
   topBar: {
     flexDirection: 'row',

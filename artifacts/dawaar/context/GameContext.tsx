@@ -18,6 +18,7 @@ export interface Player {
   isBankrupt: boolean;
   color: string;
   doublesCount: number;
+  ready: boolean;
 }
 
 export interface BoardProperty {

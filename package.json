@@ -7,12 +7,13 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "dev:api": "PORT=${PORT:-3001} pnpm --filter @workspace/api-server dev",
-    "dev:client": "pnpm --filter @workspace/dawaar dev",
+    "dev:api": "cross-env PORT=3001 pnpm --filter @workspace/api-server dev",
+    "dev:client": "cross-env EXPO_PUBLIC_API_BASE_URL=http://localhost:3001/api EXPO_NO_DOCTOR=1 pnpm exec expo start --port 8081",
     "test:api": "pnpm --filter @workspace/api-server test"
   },
   "private": true,
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   },
