@@ -7,7 +7,12 @@
     "dev": "cross-env EXPO_PUBLIC_API_BASE_URL=http://localhost:3001/api pnpm exec expo start --port 8081",
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prebuild:clean": "expo prebuild --clean",
+    "android:dev": "eas build --platform android --profile development",
+    "android:preview": "eas build --platform android --profile preview",
+    "android:release": "eas build --platform android --profile production",
+    "android:submit": "eas submit --platform android --profile production --latest"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
