@@ -162,12 +162,12 @@ describe('Tax space amounts', () => {
   const zakatIdx = BOARD.findIndex(s => s.name === 'Zakat Tax');
   const oilIdx   = BOARD.findIndex(s => s.name === 'Oil Revenue Tax');
 
-  it('Zakat Tax costs 500 DHS', () => {
+  it('Zakat Tax costs 500 Dawaar Dollars', () => {
     expect(zakatIdx).toBeGreaterThan(-1);
     expect(BOARD[zakatIdx].taxAmount).toBe(500);
   });
 
-  it('Oil Revenue Tax costs 2000 DHS', () => {
+  it('Oil Revenue Tax costs 2000 Dawaar Dollars', () => {
     expect(oilIdx).toBeGreaterThan(-1);
     expect(BOARD[oilIdx].taxAmount).toBe(2000);
   });
@@ -236,7 +236,7 @@ describe('Bankruptcy clears properties from board', () => {
 // ─── Bug 5: Pay-to-leave-jail (pure function) ────────────────────────────────
 
 describe('payJail function', () => {
-  it('deducts 500 DHS and clears jail status', () => {
+  it('deducts 500 Dawaar Dollars and clears jail status', () => {
     let state = makeTwoPlayerGame();
     state = {
       ...state,

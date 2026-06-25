@@ -70,7 +70,7 @@ export function buildBoard28(
     util(11, u[0]),
     prop(6),
     prop(7),
-    { index: 14, name:'Free Parking',  nameAr:'وقوف مجاني',     type:'free_parking' },
+    { index: 14, name:'Picnic',        nameAr:'نزهة',           type:'free_parking' },
     rail(15, r[1]),
     { index: 16, name:'Chance',        nameAr:'الحظ',            type:'chance' },
     prop(8),

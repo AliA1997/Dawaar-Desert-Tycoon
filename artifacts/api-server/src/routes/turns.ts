@@ -42,7 +42,7 @@ router.post('/:gameId/end-turn', (req, res) => {
   return res.json(newState);
 });
 
-// POST /api/games/:gameId/pay-jail — pay 500 DHS to leave jail
+// POST /api/games/:gameId/pay-jail — pay 500 Dawaar Dollars to leave jail
 router.post('/:gameId/pay-jail', (req, res) => {
   const state = getGame(req.params.gameId);
   if (!state) return res.status(404).json({ error: 'Game not found' });

@@ -20,7 +20,7 @@ export function mortgageProperty(state: GameState, playerId: string, propertyInd
         players: newPlayers,
         board: newBoard,
         version: state.version + 1,
-        log: [...state.log, { message: `${player.name} mortgaged ${space.name} for ${mortgageValue} DHS`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+        log: [...state.log, { message: `${player.name} mortgaged ${space.name} for ${mortgageValue} Dawaar Dollars`, timestamp: new Date().toISOString(), playerId }].slice(-50),
       },
     };
   } else {
@@ -35,7 +35,7 @@ export function mortgageProperty(state: GameState, playerId: string, propertyInd
         players: newPlayers,
         board: newBoard,
         version: state.version + 1,
-        log: [...state.log, { message: `${player.name} unmortgaged ${space.name} for ${unmortgageCost} DHS`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+        log: [...state.log, { message: `${player.name} unmortgaged ${space.name} for ${unmortgageCost} Dawaar Dollars`, timestamp: new Date().toISOString(), playerId }].slice(-50),
       },
     };
   }

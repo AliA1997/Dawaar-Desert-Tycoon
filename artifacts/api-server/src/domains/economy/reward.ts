@@ -17,7 +17,7 @@ export function claimAdReward(state: GameState, playerId: string): { state: Game
       log: [
         ...state.log,
         {
-          message: `${player.name} watched a sponsored video and earned ${REWARD} DHS!`,
+          message: `${player.name} watched a sponsored video and earned ${REWARD} Dawaar Dollars!`,
           timestamp: new Date().toISOString(),
           playerId,
         },

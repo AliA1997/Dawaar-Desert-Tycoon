@@ -72,11 +72,11 @@ export function sellHouse(state: GameState, playerId: string, propertyIndex: num
   if (space.hotel) {
     refund = Math.floor((space.hotelCost || 1000) / 2);
     newBoard = state.board.map((s, i) => i === propertyIndex ? { ...s, hotel: false, houses: 4 } : s);
-    logMessage = `${player.name} sold the hotel on ${space.name} for ${refund.toLocaleString()} DHS`;
+    logMessage = `${player.name} sold the hotel on ${space.name} for ${refund.toLocaleString()} Dawaar Dollars`;
   } else {
     refund = Math.floor((space.houseCost || 1000) / 2);
     newBoard = state.board.map((s, i) => i === propertyIndex ? { ...s, houses: s.houses - 1 } : s);
-    logMessage = `${player.name} sold a house on ${space.name} for ${refund.toLocaleString()} DHS`;
+    logMessage = `${player.name} sold a house on ${space.name} for ${refund.toLocaleString()} Dawaar Dollars`;
   }
 
   const newPlayers = state.players.map(p => p.id === playerId ? { ...p, money: p.money + refund } : p);

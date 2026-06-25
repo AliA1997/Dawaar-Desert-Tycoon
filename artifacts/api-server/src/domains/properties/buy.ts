@@ -21,7 +21,7 @@ export function buyProperty(state: GameState, playerId: string): { state: GameSt
       players: newPlayers,
       board: newBoard,
       version: state.version + 1,
-      log: [...state.log, { message: `${player.name} bought ${space.name} for ${space.price} DHS`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+      log: [...state.log, { message: `${player.name} bought ${space.name} for ${space.price} Dawaar Dollars`, timestamp: new Date().toISOString(), playerId }].slice(-50),
     },
   };
 }

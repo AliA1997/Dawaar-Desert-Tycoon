@@ -9,7 +9,7 @@ export function auctionBuy(state: GameState, winnerId: string, propertyIndex: nu
   if (!space) return { state, error: 'Invalid property' };
   if (space.ownerId) return { state, error: 'Property is already owned' };
   if (!space.price) return { state, error: 'Property cannot be purchased' };
-  if (price < 1) return { state, error: 'Bid must be at least 1 DHS' };
+  if (price < 1) return { state, error: 'Bid must be at least 1 Dawaar Dollars' };
   if (winner.money < price) return { state, error: 'Not enough money' };
 
   const newBoard = state.board.map((s, i) => i === propertyIndex ? { ...s, ownerId: winnerId } : s);
@@ -25,7 +25,7 @@ export function auctionBuy(state: GameState, winnerId: string, propertyIndex: nu
       version: state.version + 1,
       log: [
         ...state.log,
-        { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId },
+        { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} Dawaar Coins`, timestamp: new Date().toISOString(), playerId: winnerId },
       ].slice(-50),
     },
   };

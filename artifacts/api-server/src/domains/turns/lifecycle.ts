@@ -106,7 +106,7 @@ export function payJail(state: GameState, playerId: string): { state: GameState;
   const player = state.players.find(p => p.id === playerId);
   if (!player) return { state, error: 'Player not found' };
   if (!player.inJail) return { state, error: 'You are not in jail' };
-  if (player.money < 500) return { state, error: 'Not enough money to pay bail (500 DHS required)' };
+  if (player.money < 500) return { state, error: 'Not enough money to pay bail (500 Dawaar Dollars required)' };
 
   const newPlayers = state.players.map(p =>
     p.id === playerId ? { ...p, inJail: false, jailTurns: 0, money: p.money - 500, doublesCount: 0 } : p
@@ -118,7 +118,7 @@ export function payJail(state: GameState, playerId: string): { state: GameState;
       players: newPlayers,
       version: state.version + 1,
       log: [...state.log, {
-        message: `${player.name} paid 500 DHS bail and is free to roll!`,
+        message: `${player.name} paid 500 Dawaar Dollars bail and is free to roll!`,
         timestamp: new Date().toISOString(),
         playerId,
       }].slice(-50),

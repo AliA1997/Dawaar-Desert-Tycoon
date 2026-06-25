@@ -18,7 +18,7 @@ router.post('/:gameId/choose-tax', (req, res) => {
   return res.json(newState);
 });
 
-// POST /api/games/:gameId/reward — claim ad-watch reward (1,500 DHS)
+// POST /api/games/:gameId/reward — claim ad-watch reward (1,500 Dawaar Dollars)
 router.post('/:gameId/reward', (req, res) => {
   const state = getGame(req.params.gameId);
   if (!state) return res.status(404).json({ error: 'Game not found' });

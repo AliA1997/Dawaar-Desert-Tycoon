@@ -41,7 +41,7 @@ export function buildBoard(
     { index: 17, ...community,            type: 'community' },
     { index: 18, ...p[9],  type: 'property', price: 1800, rent: [140,700,2000,5500,7500,9500],  houseCost: 1000, hotelCost: 1000, mortgageValue: 900,  colorGroup: 'orange' },
     { index: 19, ...p[10], type: 'property', price: 2000, rent: [160,800,2200,6000,8000,10000], houseCost: 1000, hotelCost: 1000, mortgageValue: 1000, colorGroup: 'orange' },
-    { index: 20, name: 'Free Parking',    nameAr: 'وقوف مجاني',     type: 'free_parking' },
+    { index: 20, name: 'Picnic',          nameAr: 'نزهة',           type: 'free_parking' },
     { index: 21, ...p[11], type: 'property', price: 2200, rent: [180,900,2500,7000,8750,10500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1100, colorGroup: 'red' },
     { index: 22, ...chance,               type: 'chance' },
     { index: 23, ...p[12], type: 'property', price: 2200, rent: [180,900,2500,7000,8750,10500], houseCost: 1500, hotelCost: 1500, mortgageValue: 1100, colorGroup: 'red' },

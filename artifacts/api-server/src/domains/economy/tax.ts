@@ -20,7 +20,7 @@ export function chooseTax(state: GameState, playerId: string, choice: 'flat' | '
       pendingTaxChoice: null,
       version: state.version + 1,
       log: [...state.log, {
-        message: `${player.name} paid ${amount.toLocaleString()} DHS tax (${choice === 'flat' ? 'flat rate' : '10% of net worth'}) — added to Free Parking pool`,
+        message: `${player.name} paid ${amount.toLocaleString()} Dawaar Dollars tax (${choice === 'flat' ? 'flat rate' : '10% of net worth'}) — added to Picnic pool`,
         timestamp: new Date().toISOString(),
         playerId,
       }].slice(-50),

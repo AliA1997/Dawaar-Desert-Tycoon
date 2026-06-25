@@ -113,8 +113,8 @@ export const BOARD: BoardSpace[] = [
     importanceScore: 7.20, scoreBreakdown: { religious: 9, cultural: 7, gdp: 3, historical: 9 },
   },
 
-  // ── FREE PARKING corner ───────────────────────────────────────────────────
-  { index: 14, name: 'Free Parking',     nameAr: 'وقوف مجاني',          type: 'free_parking' },
+  // ── PICNIC corner (formerly Free Parking) ─────────────────────────────────
+  { index: 14, name: 'Picnic',           nameAr: 'نزهة',                type: 'free_parking' },
 
   // Railroad 2
   { index: 15, name: 'Hejaz Railway',   nameAr: 'قطار الحجاز',          type: 'railroad', price: 2000, mortgageValue: 1000, railroadRent: [400, 800, 1600] },
@@ -206,31 +206,31 @@ export const COLOR_GROUPS: Record<string, { color: string; dark: string }> = {
 
 export const CHANCE_CARDS = [
   {
-    text: 'Your camel caravan arrives at the oasis ahead of schedule. Advance to GO — collect 2,000 DHS.',
+    text: 'Your camel caravan arrives at the oasis ahead of schedule. Advance to GO — collect 2,000 Dawaar Dollars.',
     action: 'go_to_go',
   },
   {
-    text: 'A divine calling leads you to the Prophet\'s city. Advance to Medina — collect 2,000 DHS if you pass GO along the way.',
+    text: 'A divine calling leads you to the Prophet\'s city. Advance to Medina — collect 2,000 Dawaar Dollars if you pass GO along the way.',
     action: 'go_to_medina',
   },
   {
-    text: 'The Doha Investment Forum has reserved the front row for you. Advance to Doha — collect 2,000 DHS if you pass GO.',
+    text: 'The Doha Investment Forum has reserved the front row for you. Advance to Doha — collect 2,000 Dawaar Dollars if you pass GO.',
     action: 'go_to_doha',
   },
   {
-    text: 'Counterfeit dirhams were discovered in your luggage at the border checkpoint. Go directly to Jail — do not pass GO, do not collect 2,000 DHS.',
+    text: 'Counterfeit dirhams were discovered in your luggage at the border checkpoint. Go directly to Jail — do not pass GO, do not collect 2,000 Dawaar Dollars.',
     action: 'go_to_jail',
   },
   {
-    text: 'Your Saudi Aramco shares deliver a bumper quarterly dividend. The bank credits your account with 500 DHS.',
+    text: 'Your Saudi Aramco shares deliver a bumper quarterly dividend. The bank credits your account with 500 Dawaar Dollars.',
     action: 'collect_500',
   },
   {
-    text: 'Annual tuition fees for your children at a prestigious Gulf university are now due. Pay 1,500 DHS.',
+    text: 'Annual tuition fees for your children at a prestigious Gulf university are now due. Pay 1,500 Dawaar Dollars.',
     action: 'pay_1500',
   },
   {
-    text: 'All aboard! Board the nearest available railway and advance to it — collect 2,000 DHS if you pass GO.',
+    text: 'All aboard! Board the nearest available railway and advance to it — collect 2,000 Dawaar Dollars if you pass GO.',
     action: 'nearest_railroad',
   },
   {
@@ -238,50 +238,50 @@ export const CHANCE_CARDS = [
     action: 'back_3',
   },
   {
-    text: 'Your offshore drilling platform strikes a vast new reservoir. The bank pays you 1,500 DHS in royalties.',
+    text: 'Your offshore drilling platform strikes a vast new reservoir. The bank pays you 1,500 Dawaar Dollars in royalties.',
     action: 'collect_1500',
   },
   {
-    text: 'You host a lavish Eid al-Adha majlis at your villa — every player arrives bearing generous gifts. Collect 1,000 DHS from each of them.',
+    text: 'You host a lavish Eid al-Adha majlis at your villa — every player arrives bearing generous gifts. Collect 1,000 Dawaar Dollars from each of them.',
     action: 'collect_1000_each',
   },
   {
-    text: 'Hajj season fills every room in your Mecca guesthouse to capacity for the full month. Collect 2,000 DHS in accommodation revenue.',
+    text: 'Hajj season fills every room in your Mecca guesthouse to capacity for the full month. Collect 2,000 Dawaar Dollars in accommodation revenue.',
     action: 'collect_2000',
   },
   {
-    text: 'Your sports car was caught speeding on the highway. Pay a fine of 500 DHS to the traffic authority.',
+    text: 'Your sports car was caught speeding on the highway. Pay a fine of 500 Dawaar Dollars to the traffic authority.',
     action: 'pay_500',
   },
   {
-    text: 'You win the Abu Dhabi Grand Prix VIP hospitality lottery — pit lane access, gala dinner, and a cash prize! Collect 2,500 DHS.',
+    text: 'You win the Abu Dhabi Grand Prix VIP hospitality lottery — pit lane access, gala dinner, and a cash prize! Collect 2,500 Dawaar Dollars.',
     action: 'collect_2500',
   },
   {
-    text: 'Your falcon was impounded at the airport — it was travelling without the correct transit permits. Pay a penalty of 1,000 DHS to secure its release.',
+    text: 'Your falcon was impounded at the airport — it was travelling without the correct transit permits. Pay a penalty of 1,000 Dawaar Dollars to secure its release.',
     action: 'pay_1000',
   },
 ];
 
 export const COMMUNITY_CARDS = [
   {
-    text: 'Your trading caravan completes the great circuit and passes the starting point of the route. Advance to GO — collect 2,000 DHS.',
+    text: 'Your trading caravan completes the great circuit and passes the starting point of the route. Advance to GO — collect 2,000 Dawaar Dollars.',
     action: 'go_to_go',
   },
   {
-    text: 'Ramadan Kareem! The bank distributes a special 2,000 DHS bonus to all traders in celebration of the holy month.',
+    text: 'Ramadan Kareem! The bank distributes a special 2,000 Dawaar Dollars bonus to all traders in celebration of the holy month.',
     action: 'collect_2000',
   },
   {
-    text: 'A family medical emergency sends your relative to a private hospital. Pay the bill of 1,000 DHS.',
+    text: 'A family medical emergency sends your relative to a private hospital. Pay the bill of 1,000 Dawaar Dollars.',
     action: 'pay_1000',
   },
   {
-    text: 'The tax authority has processed your overpayment claim and approves a refund. Collect 200 DHS.',
+    text: 'The tax authority has processed your overpayment claim and approves a refund. Collect 200 Dawaar Dollars.',
     action: 'collect_200',
   },
   {
-    text: 'Eid Mubarak! You celebrate with all traders on the board — collect 1,000 DHS in Eidiyah from each player.',
+    text: 'Eid Mubarak! You celebrate with all traders on the board — collect 1,000 Dawaar Dollars in Eidiyah from each player.',
     action: 'collect_1000_each',
   },
   {
@@ -289,35 +289,35 @@ export const COMMUNITY_CARDS = [
     action: 'go_to_jail',
   },
   {
-    text: 'Your import-export company lands a landmark government contract. Your accountant wires you 2,500 DHS in advance payment.',
+    text: 'Your import-export company lands a landmark government contract. Your accountant wires you 2,500 Dawaar Dollars in advance payment.',
     action: 'collect_2500',
   },
   {
-    text: 'DEWA issues a combined water and electricity bill for your villa. Pay 1,500 DHS.',
+    text: 'DEWA issues a combined water and electricity bill for your villa. Pay 1,500 Dawaar Dollars.',
     action: 'pay_1500',
   },
   {
-    text: 'A wealthy great-uncle passes away and bequeaths you his entire pearl-diving fortune. Inherit 2,000 DHS.',
+    text: 'A wealthy great-uncle passes away and bequeaths you his entire pearl-diving fortune. Inherit 2,000 Dawaar Dollars.',
     action: 'collect_2000',
   },
   {
-    text: 'Emergency surgery at a private clinic was unavoidable. Pay the hospital fees of 500 DHS.',
+    text: 'Emergency surgery at a private clinic was unavoidable. Pay the hospital fees of 500 Dawaar Dollars.',
     action: 'pay_500',
   },
   {
-    text: 'Your souk stall has its best quarter ever — premium saffron and oud perfume sell out in days. Collect 1,500 DHS in trading profits.',
+    text: 'Your souk stall has its best quarter ever — premium saffron and oud perfume sell out in days. Collect 1,500 Dawaar Dollars in trading profits.',
     action: 'collect_1500',
   },
   {
-    text: 'The municipality levies annual property taxes on your desert estate. Pay 1,000 DHS.',
+    text: 'The municipality levies annual property taxes on your desert estate. Pay 1,000 Dawaar Dollars.',
     action: 'pay_1000',
   },
   {
-    text: 'The regional tourism board awards you a prize for promoting Arab cultural heritage to international visitors. Collect 500 DHS.',
+    text: 'The regional tourism board awards you a prize for promoting Arab cultural heritage to international visitors. Collect 500 Dawaar Dollars.',
     action: 'collect_500',
   },
   {
-    text: 'New metro lines are announced through your rental districts — property values surge overnight. Collect 2,000 DHS in rising rental income.',
+    text: 'New metro lines are announced through your rental districts — property values surge overnight. Collect 2,000 Dawaar Dollars in rising rental income.',
     action: 'collect_2000',
   },
 ];

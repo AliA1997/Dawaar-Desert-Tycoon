@@ -44,7 +44,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     } else {
       const jailTurns = player.jailTurns + 1;
       if (jailTurns >= 3) {
-        logs.push({ message: `${player.name} paid 500 DHS bail after 3 turns in jail`, timestamp: new Date().toISOString(), playerId });
+        logs.push({ message: `${player.name} paid 500 Dawaar Dollars bail after 3 turns in jail`, timestamp: new Date().toISOString(), playerId });
         newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, inJail: false, jailTurns: 0, money: p.money - 500, doublesCount: 0 } : p);
       } else {
         logs.push({ message: `${player.name} is stuck in jail (turn ${jailTurns})`, timestamp: new Date().toISOString(), playerId });
@@ -67,7 +67,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
   // Passed GO
   if (!updatedPlayer.inJail && newPosition < updatedPlayer.position) {
     moneyDelta += 2000;
-    logs.push({ message: `${player.name} passed GO and collected 2000 DHS!`, timestamp: new Date().toISOString() });
+    logs.push({ message: `${player.name} passed GO and collected 2000 Dawaar Coins!`, timestamp: new Date().toISOString() });
   }
 
   newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: newPosition, money: p.money + moneyDelta } : p);
@@ -85,15 +85,15 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     const netWorth = computeNetWorth(currentPlayer, newBoard);
     const percent = Math.floor(netWorth * 0.1);
     newPendingTaxChoice = { playerId, flat, percent };
-    logs.push({ message: `${player.name} must choose: pay ${flat.toLocaleString()} DHS flat OR ${percent.toLocaleString()} DHS (10% net worth)`, timestamp: new Date().toISOString() });
+    logs.push({ message: `${player.name} must choose: pay ${flat.toLocaleString()} Dawaar Coins flat OR ${percent.toLocaleString()} Dawaar Coins (10% net worth)`, timestamp: new Date().toISOString() });
   } else if (landedSpace.type === 'free_parking') {
     if (newFreeParkingPool > 0) {
       const pool = newFreeParkingPool;
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + pool } : p);
       newFreeParkingPool = 0;
-      logs.push({ message: `${player.name} landed on Free Parking and collected ${pool.toLocaleString()} DHS!`, timestamp: new Date().toISOString() });
+      logs.push({ message: `${player.name} landed on Picnic and collected ${pool.toLocaleString()} Dawaar Coins!`, timestamp: new Date().toISOString() });
     } else {
-      logs.push({ message: `${player.name} landed on Free Parking — pool is empty`, timestamp: new Date().toISOString() });
+      logs.push({ message: `${player.name} landed on Picnic — pool is empty`, timestamp: new Date().toISOString() });
     }
   } else if (landedSpace.type === 'chance') {
     const card = CHANCE_CARDS[Math.floor(Math.random() * CHANCE_CARDS.length)];
@@ -117,7 +117,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
         if (p.id === landedSpace.ownerId) return { ...p, money: p.money + rent };
         return p;
       });
-      logs.push({ message: `${player.name} paid ${rent} DHS rent to ${newPlayers.find(p => p.id === landedSpace.ownerId)?.name}`, timestamp: new Date().toISOString() });
+      logs.push({ message: `${player.name} paid ${rent} Dawaar Coins rent to ${newPlayers.find(p => p.id === landedSpace.ownerId)?.name}`, timestamp: new Date().toISOString() });
     }
   }
 

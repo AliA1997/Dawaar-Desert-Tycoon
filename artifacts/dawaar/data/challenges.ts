@@ -279,7 +279,7 @@ export const REGION_CHALLENGES: RegionChallenge[] = [
 ];
 
 export const REWARD_ADVANTAGES = [
-  { pts: 500,  icon: '💰', title: 'Starting Boost',    desc: 'Begin any multiplayer game with +2,000 DHS bonus cash.' },
+  { pts: 500,  icon: '💰', title: 'Starting Boost',    desc: 'Begin any multiplayer game with +2,000 Dawaar Coins bonus cash.' },
   { pts: 1000, icon: '🔓', title: 'Jail Pass',         desc: 'Use one "Get Out of Jail Free" per multiplayer game.' },
   { pts: 2000, icon: '📈', title: 'Double Salary',     desc: 'Collect double GO salary for 5 turns in any game.' },
 ];
