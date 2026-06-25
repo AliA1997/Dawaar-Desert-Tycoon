@@ -175,6 +175,8 @@ export default function GameScreen() {
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const auctionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const auctionCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guards against setting state after the screen unmounts mid-roll.
+  const mountedRef = useRef(true);
 
   // Subscription
   const { isSubscribed } = useSubscription();
@@ -251,6 +253,11 @@ export default function GameScreen() {
   const posKey = gameState?.players.map(p => `${p.id}:${p.position}`).join(',') ?? '';
   useEffect(() => {
     if (!gameState) return;
+    // Hold the token hop until the dice animation finishes. prevPositionsRef is
+    // intentionally left untouched while deferring, so when `diceAnimating`
+    // flips false this effect re-runs and animates the move from the real
+    // previous position.
+    if (diceAnimating) return;
     gameState.players.forEach(player => {
       if (player.isBankrupt) { prevPositionsRef.current[player.id] = player.position; return; }
       const prev = prevPositionsRef.current[player.id];
@@ -296,35 +303,17 @@ export default function GameScreen() {
             stepTimerRef.current = null;
 
             if (isHuman) {
-              // ── 3-second suspense before revealing the landing space ──
-              setSuspenseCard(gameState.board[to]);
-              setSuspensePlayer(player);
-              setSuspenseCountdown(3);
+              // ── Reveal what you landed on the moment the token arrives ──
+              setLandingCard(gameState.board[to]);
+              setLandingPlayer(player);
+              setLastCardText(extractedCardText);
+              setLastCardType(cardType);
               landingCardY.value = withSpring(0, { damping: 18, stiffness: 120 });
-
-              let count = 3;
-              countdownTimerRef.current = setInterval(() => {
-                count--;
-                setSuspenseCountdown(count);
-                if (count <= 0) {
-                  clearInterval(countdownTimerRef.current!);
-                  countdownTimerRef.current = null;
-                }
-              }, 1000);
-
-              revealTimerRef.current = setTimeout(() => {
-                setSuspenseCard(null);
-                setSuspensePlayer(null);
-                setLandingCard(gameState.board[to]);
-                setLandingPlayer(player);
-                setLastCardText(extractedCardText);
-                setLastCardType(cardType);
-                // Chance/Community cards stay open until manually closed;
-                // all other tiles auto-dismiss after 4 s
-                if (!extractedCardText) {
-                  landingDismissRef.current = setTimeout(dismissLanding, 4000);
-                }
-              }, 3000);
+              // Chance/Community cards stay open until manually closed;
+              // all other tiles auto-dismiss after 4 s
+              if (!extractedCardText) {
+                landingDismissRef.current = setTimeout(dismissLanding, 4000);
+              }
             } else {
               // ── Instant reveal for NPC moves ──
               setLandingCard(gameState.board[to]);
@@ -339,10 +328,11 @@ export default function GameScreen() {
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posKey]);
+  }, [posKey, diceAnimating]);
 
   // Cleanup on unmount
   useEffect(() => () => {
+    mountedRef.current = false;
     if (stepTimerRef.current) clearInterval(stepTimerRef.current);
     if (landingDismissRef.current) clearTimeout(landingDismissRef.current);
     if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
@@ -437,7 +427,18 @@ export default function GameScreen() {
     if (!isMyTurn || gameState.hasRolled) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setDiceAnimating(true);
+    // Guarantee the dice plays for a visible minimum even when the server
+    // responds almost instantly (e.g. on localhost). The board hop is deferred
+    // until the dice finishes (see the movement effect), so the dice roll and
+    // the token movement never overlap.
+    const MIN_DICE_MS = 1000;
+    const startedAt = Date.now();
     const result = await rollDice();
+    const remaining = MIN_DICE_MS - (Date.now() - startedAt);
+    if (remaining > 0) {
+      await new Promise<void>(resolve => setTimeout(resolve, remaining));
+    }
+    if (!mountedRef.current) return;
     setDiceAnimating(false);
     if (result?.isDoubles) {
       setDoublesGranted(true);

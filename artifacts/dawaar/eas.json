@@ -13,7 +13,6 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://YOUR-API-DOMAIN.com/api"
       },
@@ -22,7 +21,6 @@
       }
     },
     "production": {
-      "channel": "production",
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://YOUR-API-DOMAIN.com/api"
