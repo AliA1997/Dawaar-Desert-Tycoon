@@ -9,8 +9,8 @@ import {
   Modal,
   FlatList,
   Image,
+  Alert,
 } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,22 +36,73 @@ import TradeModal from '@/components/TradeModal';
 import { GameBoard, GROUP_COLORS } from '@/components/Board';
 import PropertyCard from '@/components/PropertyCard';
 import { BoardSkeleton } from '@/components/Skeleton';
-
-const DICE_GIF = require('../assets/dice.gif');
+import Confetti from '@/components/Confetti';
+import { playSound, landingSound } from '@/lib/sounds';
 
 // Fires at cumulative turns [4, 9, 16, 20, 25, 32…] (+4, +5, +7 cycling)
 const INTERSTITIAL_GAPS = [4, 5, 7] as const;
 
+const DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+// Cross-platform "not enough money" style alert (Alert.alert is a no-op on web)
+function showAlert(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    // eslint-disable-next-line no-alert
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
 function DiceDisplay({ dice }: { dice: number[] | null }) {
   if (!dice || dice.length === 0) return null;
-  const faces = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+  const total = dice.reduce((a, b) => a + b, 0);
   return (
     <View style={diceStyles.row}>
       {dice.map((d, i) => (
         <View key={i} style={diceStyles.die}>
-          <Text style={diceStyles.face}>{faces[d]}</Text>
+          <Text style={diceStyles.face}>{DICE_FACES[d]}</Text>
         </View>
       ))}
+      <View style={diceStyles.totalChip}>
+        <Text style={diceStyles.totalText}>{total}</Text>
+      </View>
+    </View>
+  );
+}
+
+type DicePhase = 'rolling' | 'result' | null;
+
+// Full-screen dice overlay: faces tumble while rolling, then settle on the
+// real result with a clear total before the token starts moving.
+function DiceRollOverlay({ phase, dice }: { phase: DicePhase; dice: number[] | null }) {
+  const [tumble, setTumble] = useState<number[]>([1, 1]);
+
+  useEffect(() => {
+    if (phase !== 'rolling') return;
+    const t = setInterval(() => {
+      setTumble([1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)]);
+    }, 90);
+    return () => clearInterval(t);
+  }, [phase]);
+
+  if (!phase) return null;
+  const settled = phase === 'result' && dice && dice.length > 0;
+  const shown = settled ? dice : tumble;
+  const total = settled ? dice.reduce((a, b) => a + b, 0) : null;
+
+  return (
+    <View style={diceStyles.overlay} pointerEvents="none">
+      <View style={diceStyles.overlayRow}>
+        {shown.map((d, i) => (
+          <View key={i} style={[diceStyles.bigDie, settled && diceStyles.bigDieSettled]}>
+            <Text style={diceStyles.bigFace}>{DICE_FACES[d]}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={diceStyles.overlayLabel}>
+        {settled ? `You rolled ${total}!` : 'Rolling…'}
+      </Text>
     </View>
   );
 }
@@ -59,8 +110,8 @@ function DiceDisplay({ dice }: { dice: number[] | null }) {
 const diceStyles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   die: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 10,
     backgroundColor: Colors.warmCream,
     alignItems: 'center',
@@ -68,7 +119,51 @@ const diceStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.gold,
   },
-  face: { fontSize: 28, color: Colors.darkBg },
+  face: { fontSize: 32, color: Colors.darkBg },
+  totalChip: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 8,
+    backgroundColor: Colors.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  totalText: { fontSize: 15, fontFamily: 'Inter_700Bold', color: Colors.darkBg },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(8,15,26,0.82)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    zIndex: 999,
+  },
+  overlayRow: { flexDirection: 'row', gap: 18 },
+  bigDie: {
+    width: 92,
+    height: 92,
+    borderRadius: 20,
+    backgroundColor: Colors.warmCream,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.gold + '66',
+  },
+  bigDieSettled: {
+    borderColor: Colors.gold,
+    shadowColor: Colors.gold,
+    shadowOpacity: 0.6,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
+  },
+  bigFace: { fontSize: 64, color: Colors.darkBg },
+  overlayLabel: {
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warmCream,
+    letterSpacing: 0.5,
+  },
 });
 
 // ─── Landing-card helpers ──────────────────────────────────────────────────────
@@ -131,7 +226,7 @@ export default function GameScreen() {
   const [selectedProperty, setSelectedProperty] = useState<BoardProperty | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [showPlayers, setShowPlayers] = useState(false);
-  const [diceAnimating, setDiceAnimating] = useState(false);
+  const [dicePhase, setDicePhase] = useState<DicePhase>(null);
   const [logFilter, setLogFilter] = useState<'all' | 'rent' | 'cards' | 'buildings' | 'trades'>('all');
   const [showTaxModal, setShowTaxModal] = useState(false);
   const [bankruptModal, setBankruptModal] = useState<{ name: string; color: string; isMe: boolean } | null>(null);
@@ -237,6 +332,7 @@ export default function GameScreen() {
   const handleClaimAdReward = useCallback(async () => {
     setAdClaiming(true);
     await claimAdReward();
+    playSound('receiveMoney');
     setAdClaiming(false);
     setAdWatched(true);
     setShowAdModal(false);
@@ -253,11 +349,11 @@ export default function GameScreen() {
   const posKey = gameState?.players.map(p => `${p.id}:${p.position}`).join(',') ?? '';
   useEffect(() => {
     if (!gameState) return;
-    // Hold the token hop until the dice animation finishes. prevPositionsRef is
-    // intentionally left untouched while deferring, so when `diceAnimating`
-    // flips false this effect re-runs and animates the move from the real
-    // previous position.
-    if (diceAnimating) return;
+    // Hold the token hop until the dice overlay (rolling + result phases) is
+    // done. prevPositionsRef is intentionally left untouched while deferring,
+    // so when `dicePhase` clears this effect re-runs and animates the move
+    // from the real previous position.
+    if (dicePhase) return;
     gameState.players.forEach(player => {
       if (player.isBankrupt) { prevPositionsRef.current[player.id] = player.position; return; }
       const prev = prevPositionsRef.current[player.id];
@@ -302,6 +398,9 @@ export default function GameScreen() {
             clearInterval(stepTimerRef.current!);
             stepTimerRef.current = null;
 
+            // Landing SFX — tile-specific (jail, chance, community, tax, land)
+            playSound(landingSound(gameState.board[to].type));
+
             if (isHuman) {
               // ── Reveal what you landed on the moment the token arrives ──
               setLandingCard(gameState.board[to]);
@@ -328,7 +427,7 @@ export default function GameScreen() {
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posKey, diceAnimating]);
+  }, [posKey, dicePhase]);
 
   // Cleanup on unmount
   useEffect(() => () => {
@@ -376,14 +475,22 @@ export default function GameScreen() {
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
+  // Buy is offered on any unowned purchasable tile; affordability is checked
+  // on press so the player gets an explicit "not enough money" alert.
   const canBuyCurrentSpace = useMemo(() => {
     if (!gameState || !myPlayer || !isMyTurn) return false;
     const space = gameState.board[myPlayer.position];
     const hasMoved = gameState.hasRolled || myPlayer.doublesCount > 0;
     return !!(hasMoved && space &&
       (space.type === 'property' || space.type === 'railroad' || space.type === 'utility') &&
-      !space.ownerId && space.price != null && myPlayer.money >= space.price);
+      !space.ownerId && space.price != null);
   }, [gameState, myPlayer, isMyTurn]);
+
+  const canAffordCurrentSpace = useMemo(() => {
+    if (!gameState || !myPlayer) return false;
+    const space = gameState.board[myPlayer.position];
+    return !!(space?.price != null && myPlayer.money >= space.price);
+  }, [gameState, myPlayer]);
 
   const myBuildableProps = useMemo(() => {
     if (!gameState || !myPlayer) return [];
@@ -413,6 +520,7 @@ export default function GameScreen() {
       router.replace('/');
     } else if (gameState.status === 'finished' && gameState.winnerId) {
       setShowGameOver(true);
+      if (gameState.winnerId === myPlayerId) playSound('win');
     }
   }, [gameState?.status]);
 
@@ -426,20 +534,27 @@ export default function GameScreen() {
   const handleRoll = async () => {
     if (!isMyTurn || gameState.hasRolled) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setDiceAnimating(true);
-    // Guarantee the dice plays for a visible minimum even when the server
-    // responds almost instantly (e.g. on localhost). The board hop is deferred
-    // until the dice finishes (see the movement effect), so the dice roll and
-    // the token movement never overlap.
-    const MIN_DICE_MS = 1000;
+    setDicePhase('rolling');
+    // Guarantee the tumble plays for a visible minimum even when the server
+    // responds almost instantly (e.g. on localhost), then hold on the settled
+    // result so the roll reads clearly. The board hop is deferred until the
+    // overlay closes (see the movement effect), so the dice roll and the
+    // token movement never overlap.
+    const MIN_TUMBLE_MS = 900;
+    const RESULT_HOLD_MS = 900;
     const startedAt = Date.now();
     const result = await rollDice();
-    const remaining = MIN_DICE_MS - (Date.now() - startedAt);
+    const remaining = MIN_TUMBLE_MS - (Date.now() - startedAt);
     if (remaining > 0) {
       await new Promise<void>(resolve => setTimeout(resolve, remaining));
     }
     if (!mountedRef.current) return;
-    setDiceAnimating(false);
+    if (result) {
+      setDicePhase('result');
+      await new Promise<void>(resolve => setTimeout(resolve, RESULT_HOLD_MS));
+      if (!mountedRef.current) return;
+    }
+    setDicePhase(null);
     if (result?.isDoubles) {
       setDoublesGranted(true);
     }
@@ -459,7 +574,16 @@ export default function GameScreen() {
   };
 
   const handleBuy = async () => {
+    if (mySpace?.price != null && myPlayer && myPlayer.money < mySpace.price) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showAlert(
+        'Not enough money',
+        `You need ${mySpace.price.toLocaleString()} DHS to buy ${mySpace.name}, but you only have ${myPlayer.money.toLocaleString()} DHS.`,
+      );
+      return;
+    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    playSound('spendMoney');
     await buyProperty();
   };
 
@@ -549,6 +673,7 @@ export default function GameScreen() {
 
   const handlePayJail = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    playSound('spendMoney');
     await payJail();
   };
 
@@ -587,7 +712,7 @@ export default function GameScreen() {
         </View>
       </View>
 
-w      <ScrollView
+      <ScrollView
         style={gameStyles.scrollArea}
         contentContainerStyle={gameStyles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -598,6 +723,7 @@ w      <ScrollView
           board={gameState.board}
           players={gameState.players}
           highlightPos={highlightPos}
+          currentPlayerId={gameState.currentPlayerId}
           onCellLongPress={onCellLongPress}
         />
       </View>
@@ -767,7 +893,10 @@ w      <ScrollView
             )}
             {canBuyCurrentSpace && (
               <View style={gameStyles.buyRow}>
-                <TouchableOpacity style={[gameStyles.buyBtn, { flex: 1 }]} onPress={handleBuy}>
+                <TouchableOpacity
+                  style={[gameStyles.buyBtn, { flex: 1 }, !canAffordCurrentSpace && { opacity: 0.55 }]}
+                  onPress={handleBuy}
+                >
                   <LinearGradient colors={['#22C55E', '#16A34A']} style={gameStyles.buyBtnGrad}>
                     <Ionicons name="business" size={20} color="white" />
                     <Text style={gameStyles.buyBtnText}>Buy {mySpace?.name}</Text>
@@ -1201,21 +1330,13 @@ w      <ScrollView
       {/* TODO: Replace with real AdMob BannerAd from react-native-google-mobile-ads */}
       {!isSubscribed && adWatched && (
         <View style={[gameStyles.bannerAd, { marginBottom: insets.bottom }]}>
-          <Text style={gameStyles.bannerAdText}>🌟 Dawaar — Discover the Arab World</Text>
+          <Text style={gameStyles.bannerAdText}>🌟 Eastern Tycoon — Discover the East</Text>
           <Text style={gameStyles.bannerAdSub}>AD</Text>
         </View>
       )}
 
-      {/* ─── Dice Roll GIF Overlay ────────────────────────────────────────── */}
-      {diceAnimating && (
-        <View style={gameStyles.diceGifOverlay} pointerEvents="none">
-          <ExpoImage
-            source={DICE_GIF}
-            style={gameStyles.diceGifImg}
-            contentFit="contain"
-          />
-        </View>
-      )}
+      {/* ─── Dice Roll Overlay ────────────────────────────────────────────── */}
+      <DiceRollOverlay phase={dicePhase} dice={lastDiceRoll} />
 
       {/* ─── Interstitial Ad Modal ────────────────────────────────────────── */}
       {/* TODO: Replace inner content with real AdMob InterstitialAd */}
@@ -1237,11 +1358,11 @@ w      <ScrollView
             {/* Ad content placeholder */}
             <View style={gameStyles.interstitialContent}>
               <View style={gameStyles.interstitialArtwork}>
-                <Text style={gameStyles.interstitialArtworkEmoji}>🕌</Text>
+                <Text style={gameStyles.interstitialArtworkEmoji}>🏯</Text>
               </View>
-              <Text style={gameStyles.interstitialTitle}>Dawaar Premium</Text>
+              <Text style={gameStyles.interstitialTitle}>Eastern Tycoon Premium</Text>
               <Text style={gameStyles.interstitialBody}>
-                Enjoy Dawaar without interruptions. Remove all ads with a Premium subscription.
+                Enjoy Eastern Tycoon without interruptions. Remove all ads with a Premium subscription.
               </Text>
               <TouchableOpacity
                 style={gameStyles.interstitialCta}
@@ -1335,6 +1456,7 @@ w      <ScrollView
       {/* ─── Game Over Modal ───────────────────────────────────────────────── */}
       <Modal visible={showGameOver} transparent animationType="fade" onRequestClose={() => {}}>
         <View style={gameStyles.confirmOverlay}>
+          {gameState?.winnerId === myPlayerId && <Confetti />}
           <View style={gameStyles.confirmBox}>
             <Text style={{ fontSize: 44, marginBottom: 8 }}>
               {gameState?.winnerId === myPlayerId ? '🏆' : '😔'}
@@ -1344,6 +1466,16 @@ w      <ScrollView
               <Text style={gameStyles.confirmMsg}>
                 {gameState.players.find(p => p.id === gameState.winnerId)?.name ?? 'Someone'} wins the game!
               </Text>
+            )}
+            {gameState?.winnerId === myPlayerId && (
+              <View style={gameStyles.challengeRewardBanner}>
+                <Text style={gameStyles.challengeRewardIcon}>🪙</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={gameStyles.challengeRewardTitle}>Victory Reward!</Text>
+                  <Text style={gameStyles.challengeRewardDesc}>+500 tokens earned</Text>
+                </View>
+                <Text style={gameStyles.challengeRewardTotal}>{rewardPoints.toLocaleString()} pts</Text>
+              </View>
             )}
             {gameState?.boardId && gameState?.winnerId === myPlayerId && (
               <View style={gameStyles.challengeRewardBanner}>
@@ -2324,19 +2456,6 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: 'rgba(255,255,255,0.25)',
     letterSpacing: 1,
-  },
-
-  /* ── Dice GIF overlay ── */
-  diceGifOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(8,15,26,0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 999,
-  },
-  diceGifImg: {
-    width: 240,
-    height: 240,
   },
 
   /* ── Interstitial modal ── */

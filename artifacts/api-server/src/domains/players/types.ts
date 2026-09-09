@@ -13,7 +13,9 @@ export interface Player {
   ready: boolean;
 }
 
-export const PLAYER_COLORS = ['#C0392B', '#2980B9', '#27AE60', '#8E44AD', '#F39C12', '#1ABC9C'];
+// One distinct, vivid color per join slot (max 6 players). Keep in sync with
+// the client palette in artifacts/dawaar/constants/colors.ts (`players`).
+export const PLAYER_COLORS = ['#EF4444', '#3B82F6', '#22C55E', '#A855F7', '#F59E0B', '#06B6D4'];
 export const STARTING_MONEY = 15000;
 
 export function makePlayer(id: string, name: string, token: string, colorIndex: number): Player {

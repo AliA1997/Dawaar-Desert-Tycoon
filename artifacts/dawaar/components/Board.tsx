@@ -1,6 +1,14 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  cancelAnimation,
+} from 'react-native-reanimated';
 
 import Colors from '@/constants/colors';
 import type { BoardProperty, Player } from '@/context/GameContext';
@@ -23,6 +31,41 @@ const SPECIAL_LABELS: Record<string, string> = {
 
 type CellOrientation = 'bottom' | 'top' | 'left' | 'right' | 'corner';
 
+// A player's board pointer. The current player's pointer pulses so it is
+// always easy to spot whose turn it is.
+function PlayerDot({ color, isCurrent }: { color: string; isCurrent: boolean }) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (isCurrent) {
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(1.55, { duration: 420 }),
+          withTiming(1, { duration: 420 }),
+        ),
+        -1,
+      );
+    } else {
+      cancelAnimation(scale);
+      scale.value = withTiming(1, { duration: 150 });
+    }
+    return () => cancelAnimation(scale);
+  }, [isCurrent, scale]);
+
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View
+      style={[
+        cellStyles.playerDot,
+        { backgroundColor: color },
+        isCurrent && cellStyles.playerDotCurrent,
+        style,
+      ]}
+    />
+  );
+}
+
 export const BoardCell = memo(function BoardCell({
   space,
   players,
@@ -30,6 +73,7 @@ export const BoardCell = memo(function BoardCell({
   h,
   orientation = 'bottom',
   isHighlighted = false,
+  currentPlayerId = null,
   onLongPress,
 }: {
   space: BoardProperty;
@@ -38,6 +82,7 @@ export const BoardCell = memo(function BoardCell({
   h: number;
   orientation?: CellOrientation;
   isHighlighted?: boolean;
+  currentPlayerId?: string | null;
   onLongPress?: () => void;
 }) {
   const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
@@ -83,6 +128,11 @@ export const BoardCell = memo(function BoardCell({
           >
             {shortName}
           </Text>
+          {space.price != null && (
+            <Text style={cellStyles.priceText} numberOfLines={1}>
+              {space.price.toLocaleString()}
+            </Text>
+          )}
         </View>
       ) : (
         <Text style={cellStyles.typeIcon}>{SPECIAL_LABELS[space.type] ?? ''}</Text>
@@ -107,8 +157,8 @@ export const BoardCell = memo(function BoardCell({
 
       {playersHere.length > 0 && (
         <View style={cellStyles.playersRow}>
-          {playersHere.slice(0, 3).map(p => (
-            <View key={p.id} style={[cellStyles.playerDot, { backgroundColor: p.color }]} />
+          {playersHere.slice(0, 4).map(p => (
+            <PlayerDot key={p.id} color={p.color} isCurrent={p.id === currentPlayerId} />
           ))}
         </View>
       )}
@@ -135,6 +185,13 @@ const cellStyles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.1,
   },
+  priceText: {
+    fontSize: 5.5,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+    textAlign: 'center',
+    marginTop: 1,
+  },
   typeIcon:      { fontSize: 9, color: Colors.warmCream, opacity: 0.75 },
   buildingsRow: {
     position: 'absolute',
@@ -156,6 +213,15 @@ const cellStyles = StyleSheet.create({
     width: 7, height: 7, borderRadius: 4,
     borderWidth: 0.5, borderColor: Colors.warmCream,
   },
+  playerDotCurrent: {
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.9,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
   highlightOverlay: {
     position: 'absolute',
     inset: 0,
@@ -166,11 +232,12 @@ const cellStyles = StyleSheet.create({
 });
 
 export const GameBoard = memo(function GameBoard({
-  board, players, highlightPos, onCellLongPress,
+  board, players, highlightPos, currentPlayerId, onCellLongPress,
 }: {
   board: BoardProperty[];
   players: Player[];
   highlightPos?: number | null;
+  currentPlayerId?: string | null;
   onCellLongPress?: (space: BoardProperty) => void;
 }) {
   const { width, height } = useWindowDimensions();
@@ -192,8 +259,8 @@ export const GameBoard = memo(function GameBoard({
   return (
     <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
       <View style={[boardStyles.center, { top: CS2, left: CS2, right: CS2, bottom: CS2 }]}>
-        <Text style={[boardStyles.centerTitleAr, { fontSize: Math.round(CS * 1.4) }]}>دوّار</Text>
-        <Text style={[boardStyles.centerTitle, { fontSize: Math.round(CS * 0.45) }]}>DAWAAR</Text>
+        <Text style={[boardStyles.centerTitleAr, { fontSize: Math.round(CS * 1.4) }]}>東方</Text>
+        <Text style={[boardStyles.centerTitle, { fontSize: Math.round(CS * 0.4) }]}>EASTERN TYCOON</Text>
         <LinearGradient colors={[Colors.gold + '18', 'transparent']} style={boardStyles.centerGlow} />
       </View>
 
@@ -205,6 +272,7 @@ export const GameBoard = memo(function GameBoard({
               w={isC ? CS2 : CS} h={CS2}
               orientation={isC ? 'corner' : 'bottom'}
               isHighlighted={highlightPos === space.index}
+              currentPlayerId={currentPlayerId}
               onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
           );
         })}
@@ -215,6 +283,7 @@ export const GameBoard = memo(function GameBoard({
           <BoardCell key={space.index} space={space} players={players}
             w={CS2} h={CS} orientation="right"
             isHighlighted={highlightPos === space.index}
+              currentPlayerId={currentPlayerId}
             onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
         ))}
       </View>
@@ -227,6 +296,7 @@ export const GameBoard = memo(function GameBoard({
               w={isC ? CS2 : CS} h={CS2}
               orientation={isC ? 'corner' : 'top'}
               isHighlighted={highlightPos === space.index}
+              currentPlayerId={currentPlayerId}
               onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
           );
         })}
@@ -237,6 +307,7 @@ export const GameBoard = memo(function GameBoard({
           <BoardCell key={space.index} space={space} players={players}
             w={CS2} h={CS} orientation="left"
             isHighlighted={highlightPos === space.index}
+              currentPlayerId={currentPlayerId}
             onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
         ))}
       </View>

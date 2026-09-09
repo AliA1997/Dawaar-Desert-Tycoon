@@ -92,7 +92,7 @@ export function getTokenImage(tokenId: string): any {
   return TOKENS.find(t => t.id === tokenId)?.image ?? require('../assets/tokens/camel.png');
 }
 
-export const NPC_NAMES = ['Khalid', 'Tariq', 'Omar', 'Layla', 'Zaid'];
+export const NPC_NAMES = ['Kenji', 'Mei', 'Jin', 'Sakura', 'Wei'];
 export const NPC_TOKENS = ['falcon', 'dhow', 'palm', 'crescent', 'lamp'];
 
 export interface SavedGame {
@@ -644,6 +644,28 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ points: 1000 }),
+        }).catch(() => {});
+      }
+      return next;
+    });
+  }, [gameState?.status, gameState?.winnerId, myPlayerId]);
+
+  // Award 500 tokens for winning any game (on top of challenge bonuses)
+  useEffect(() => {
+    if (!gameState || gameState.status !== 'finished' || !gameState.winnerId) return;
+    if (gameState.winnerId !== myPlayerId) return;
+    const key = `${gameState.gameId}_win`;
+    if (rewardAwardedRef.current.has(key)) return;
+    rewardAwardedRef.current.add(key);
+    setRewardPoints(prev => {
+      const next = prev + 500;
+      AsyncStorage.setItem(REWARD_POINTS_KEY, String(next));
+      // Mirror to server (best-effort)
+      if (myPlayerId) {
+        fetch(`${API_BASE}/players/${myPlayerId}/reward`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ points: 500 }),
         }).catch(() => {});
       }
       return next;

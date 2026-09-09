@@ -54,7 +54,7 @@ export default function LobbyScreen() {
 
   const handleShare = async () => {
     try {
-      await Share.share({ message: `Join my Dawaar game! Code: ${gameId}` });
+      await Share.share({ message: `Join my Eastern Tycoon game! Code: ${gameId}` });
     } catch {}
   };
 
@@ -172,7 +172,7 @@ export default function LobbyScreen() {
           </View>
           <View style={styles.rulesRow}>
             <Ionicons name="business" size={16} color={Colors.gold} />
-            <Text style={styles.rulesText}>Buy properties across the Middle East</Text>
+            <Text style={styles.rulesText}>Buy properties across East Asia</Text>
           </View>
           <View style={styles.rulesRow}>
             <Ionicons name="home" size={16} color={Colors.gold} />
