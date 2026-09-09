@@ -120,6 +120,16 @@ describe('reconcileGameState', () => {
     assert.equal(out.players[1], prev.players[1]);
   });
 
+  it('leaves the log alone — it is capped server-side and shifts on append', () => {
+    const prevLog = [{ message: 'rolled 7', timestamp: 't1' }];
+    const nextLog = [{ message: 'rolled 7', timestamp: 't1' }, { message: 'bought', timestamp: 't2' }];
+    const prev = state({ log: prevLog as GameState['log'] });
+    const next = state({ version: 2, log: nextLog as GameState['log'] });
+    const out = reconcileGameState(prev, next);
+
+    assert.equal(out.log, next.log);
+  });
+
   it('reflects a property being bought', () => {
     const prev = state();
     const next = state({ version: 2, board: [space({ ownerId: 'p1' })] });

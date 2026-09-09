@@ -25,6 +25,7 @@ import Animated, {
   withRepeat,
   withDelay,
   runOnJS,
+  cancelAnimation,
 } from 'react-native-reanimated';
 
 import Colors from '@/constants/colors';
@@ -54,6 +55,11 @@ function ConnectionBanner({ status }: { status: ConnectionStatus }) {
       withSequence(withTiming(1, { duration: 600 }), withTiming(0.35, { duration: 600 })),
       -1,
     );
+    // An infinite repeat keeps running on the UI thread after the banner goes.
+    return () => {
+      cancelAnimation(pulse);
+      pulse.value = 0.35;
+    };
   }, [status, pulse]);
 
   const dotStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));

@@ -68,14 +68,20 @@ export function reuseUnchanged<T>(prev: readonly T[] | undefined, next: readonly
  * Merge a newly received state onto the one already rendered, keeping object
  * identity for everything that did not actually change. `prev` of `null`, or a
  * state for a different game, passes straight through.
+ *
+ * Only `board` and `players` are reconciled — see the note inside.
  */
 export function reconcileGameState(prev: GameState | null, next: GameState): GameState {
   if (!prev || prev.gameId !== next.gameId) return next;
 
   const board = reuseUnchanged(prev.board, next.board) as GameState['board'];
   const players = reuseUnchanged(prev.players, next.players) as GameState['players'];
-  const log = reuseUnchanged(prev.log, next.log) as GameState['log'];
 
-  if (board === next.board && players === next.players && log === next.log) return next;
-  return { ...next, board, players, log };
+  // `log` is deliberately not reconciled. The server caps it at the last 50
+  // entries, so once a game passes 50 log lines every append shifts the whole
+  // array and index-matched rows stop lining up — 50 comparisons per delta that
+  // can never match. The log also changes on nearly every delta anyway, which
+  // is exactly the case reconciliation cannot help.
+  if (board === next.board && players === next.players) return next;
+  return { ...next, board, players };
 }

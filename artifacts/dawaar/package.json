@@ -8,7 +8,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test lib/*.test.ts",
+    "test": "tsx --test \"**/*.test.ts\"",
     "prebuild:clean": "expo prebuild --clean",
     "android:dev": "eas build --platform android --profile development",
     "android:preview": "eas build --platform android --profile preview",
