@@ -5,7 +5,13 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', '..', '..', 'data');
-const PLAYERS_FILE = path.join(DATA_DIR, 'players.json');
+
+// The suite exercises the real reward flow, which persists. Writing that to the
+// tracked `players.json` meant every `pnpm test:api` run left fixture profiles
+// in the working tree — noise that got committed by hand more than once. Tests
+// get their own (gitignored) file instead.
+const isTest = !!process.env.VITEST || process.env.NODE_ENV === 'test';
+const PLAYERS_FILE = path.join(DATA_DIR, isTest ? 'players.test.json' : 'players.json');
 
 export interface PlayerProfile {
   playerId: string;
@@ -108,7 +114,6 @@ export function setRewardPoints(playerId: string, points: number): PlayerProfile
   return next;
 }
 
-const isTest = !!process.env.VITEST || process.env.NODE_ENV === 'test';
 let shuttingDown = false;
 async function gracefulShutdown() {
   if (shuttingDown) return;

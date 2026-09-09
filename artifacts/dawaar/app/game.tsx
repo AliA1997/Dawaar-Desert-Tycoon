@@ -29,7 +29,7 @@ import Animated, {
 
 import Colors from '@/constants/colors';
 import { useGame, TOKENS, getTokenImage } from '@/context/GameContext';
-import type { BoardProperty, Player } from '@/context/GameContext';
+import type { BoardProperty, ConnectionStatus, Player } from '@/context/GameContext';
 import { useSubscription } from '@/lib/revenuecat';
 import SubscribeModal from '@/components/SubscribeModal';
 import TradeModal from '@/components/TradeModal';
@@ -38,6 +38,35 @@ import PropertyCard from '@/components/PropertyCard';
 import { BoardSkeleton } from '@/components/Skeleton';
 import Confetti from '@/components/Confetti';
 import { playSound, landingSound } from '@/lib/sounds';
+
+/**
+ * Shown when the long-poll has failed twice in a row. A board that has stopped
+ * updating is indistinguishable from a board where nothing is happening, so say
+ * which one it is. Non-blocking by design — the game stays fully readable, and
+ * the banner clears itself the moment a poll succeeds.
+ */
+function ConnectionBanner({ status }: { status: ConnectionStatus }) {
+  const pulse = useSharedValue(0.35);
+
+  useEffect(() => {
+    if (status !== 'reconnecting') return;
+    pulse.value = withRepeat(
+      withSequence(withTiming(1, { duration: 600 }), withTiming(0.35, { duration: 600 })),
+      -1,
+    );
+  }, [status, pulse]);
+
+  const dotStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
+  if (status !== 'reconnecting') return null;
+
+  return (
+    <View style={gameStyles.connectionBanner} pointerEvents="none">
+      <Animated.View style={[gameStyles.connectionDot, dotStyle]} />
+      <Text style={gameStyles.connectionText}>Reconnecting…</Text>
+    </View>
+  );
+}
 
 // Fires at cumulative turns [4, 9, 16, 20, 25, 32…] (+4, +5, +7 cycling)
 const INTERSTITIAL_GAPS = [4, 5, 7] as const;
@@ -218,7 +247,7 @@ export default function GameScreen() {
   const {
     gameState, myPlayerId, myPlayer, isMyTurn,
     rollDice, buyProperty, buildHouse, sellHouse, auctionBuy, endTurn, payJail, leaveGame,
-    error, clearError, lastDiceRoll,
+    error, clearError, lastDiceRoll, connection,
     npcThinking, isSinglePlayer, npcPlayerIds,
     claimAdReward, proposeTrade, acceptTrade, declineTrade, chooseTax, rewardPoints,
   } = useGame();
@@ -711,6 +740,8 @@ export default function GameScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <ConnectionBanner status={connection} />
 
       <ScrollView
         style={gameStyles.scrollArea}
@@ -1622,6 +1653,30 @@ const gameStyles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: '#6B7280',
     marginTop: 1,
+  },
+  connectionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 7,
+    marginTop: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+  },
+  connectionDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#F59E0B',
+  },
+  connectionText: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#F59E0B',
   },
   errorBanner: {
     flexDirection: 'row',
