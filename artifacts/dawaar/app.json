@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Dawaar - Middle East Monopoly",
+    "name": "Eastern Tycoon",
     "slug": "dawaar",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000B2C"
     },
     "ios": {
       "supportsTablet": false,
@@ -21,13 +21,13 @@
       "package": "com.qamarlabs.dawaar",
       "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#080F1A"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#000B2C"
       },
       "permissions": []
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       [

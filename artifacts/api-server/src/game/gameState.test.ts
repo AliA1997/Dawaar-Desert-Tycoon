@@ -159,30 +159,30 @@ describe('back_3 card (engine level)', () => {
 // ─── Bug 3: Tax values ────────────────────────────────────────────────────────
 
 describe('Tax space amounts', () => {
-  const zakatIdx = BOARD.findIndex(s => s.name === 'Zakat Tax');
-  const oilIdx   = BOARD.findIndex(s => s.name === 'Oil Revenue Tax');
+  const harborIdx = BOARD.findIndex(s => s.name === 'Harbor Tax');
+  const tradeIdx   = BOARD.findIndex(s => s.name === 'Trade Tax');
 
-  it('Zakat Tax costs 500 Dawaar Dollars', () => {
-    expect(zakatIdx).toBeGreaterThan(-1);
-    expect(BOARD[zakatIdx].taxAmount).toBe(500);
+  it('Harbor Tax costs 500 DHS', () => {
+    expect(harborIdx).toBeGreaterThan(-1);
+    expect(BOARD[harborIdx].taxAmount).toBe(500);
   });
 
-  it('Oil Revenue Tax costs 2000 Dawaar Dollars', () => {
-    expect(oilIdx).toBeGreaterThan(-1);
-    expect(BOARD[oilIdx].taxAmount).toBe(2000);
+  it('Trade Tax costs 2000 DHS', () => {
+    expect(tradeIdx).toBeGreaterThan(-1);
+    expect(BOARD[tradeIdx].taxAmount).toBe(2000);
   });
 
   it('opens a pending tax choice when player rolls onto a tax space', () => {
-    // Land on Zakat Tax via a 2-roll
+    // Land on Harbor Tax via a 2-roll
     let state = makeTwoPlayerGame();
     state = {
       ...state,
-      players: state.players.map(p => p.id === 'alice' ? { ...p, position: zakatIdx - 2 } : p),
+      players: state.players.map(p => p.id === 'alice' ? { ...p, position: harborIdx - 2 } : p),
     };
     mockDiceSeq(die(1), die(1));
     const { state: after } = rollDice(state, 'alice');
     const alice = after.players.find(p => p.id === 'alice')!;
-    expect(alice.position).toBe(zakatIdx);
+    expect(alice.position).toBe(harborIdx);
     expect(after.pendingTaxChoice).toBeDefined();
     expect(after.pendingTaxChoice!.playerId).toBe('alice');
     expect(after.pendingTaxChoice!.flat).toBe(500);
@@ -236,7 +236,7 @@ describe('Bankruptcy clears properties from board', () => {
 // ─── Bug 5: Pay-to-leave-jail (pure function) ────────────────────────────────
 
 describe('payJail function', () => {
-  it('deducts 500 Dawaar Dollars and clears jail status', () => {
+  it('deducts 500 DHS and clears jail status', () => {
     let state = makeTwoPlayerGame();
     state = {
       ...state,

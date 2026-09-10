@@ -1,6 +1,14 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  cancelAnimation,
+} from 'react-native-reanimated';
 
 import Colors from '@/constants/colors';
 import type { BoardProperty, Player } from '@/context/GameContext';
@@ -23,25 +31,74 @@ const SPECIAL_LABELS: Record<string, string> = {
 
 type CellOrientation = 'bottom' | 'top' | 'left' | 'right' | 'corner';
 
+// A player's board pointer. The current player's pointer pulses so it is
+// always easy to spot whose turn it is.
+function PlayerDot({ color, isCurrent }: { color: string; isCurrent: boolean }) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (isCurrent) {
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(1.55, { duration: 420 }),
+          withTiming(1, { duration: 420 }),
+        ),
+        -1,
+      );
+    } else {
+      cancelAnimation(scale);
+      scale.value = withTiming(1, { duration: 150 });
+    }
+    return () => cancelAnimation(scale);
+  }, [isCurrent, scale]);
+
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View
+      style={[
+        cellStyles.playerDot,
+        { backgroundColor: color },
+        isCurrent && cellStyles.playerDotCurrent,
+        style,
+      ]}
+    />
+  );
+}
+
+/** Shared reference for the ~22 cells nobody is standing on, so an empty cell
+ *  never re-renders just because someone moved somewhere else. */
+const NO_OCCUPANTS: Player[] = [];
+
 export const BoardCell = memo(function BoardCell({
   space,
-  players,
+  occupants = NO_OCCUPANTS,
+  ownerColor = null,
+  ownerInitial = null,
   w,
   h,
   orientation = 'bottom',
   isHighlighted = false,
+  currentPlayerId = null,
   onLongPress,
 }: {
   space: BoardProperty;
-  players: Player[];
+  /** Only the players standing on this space — resolved once by GameBoard
+   *  rather than re-filtering the whole roster inside all 28 cells. */
+  occupants?: Player[];
+  /** Owner reduced to the two primitives the cell draws, so a cell does not
+   *  re-render every time the owner's money changes. */
+  ownerColor?: string | null;
+  ownerInitial?: string | null;
   w: number;
   h: number;
   orientation?: CellOrientation;
   isHighlighted?: boolean;
-  onLongPress?: () => void;
+  currentPlayerId?: string | null;
+  /** Stable across renders — the cell supplies its own `space`. */
+  onLongPress?: (space: BoardProperty) => void;
 }) {
-  const playersHere = players.filter(p => p.position === space.index && !p.isBankrupt);
-  const ownerPlayer = space.ownerId ? players.find(p => p.id === space.ownerId) : null;
+  const playersHere = occupants;
   const groupColor  = space.colorGroup ? GROUP_COLORS[space.colorGroup] : null;
 
   const shortName = (space.type === 'property' || space.type === 'railroad' || space.type === 'utility')
@@ -56,12 +113,12 @@ export const BoardCell = memo(function BoardCell({
 
   const rot = orientation === 'bottom' ? '-90deg' : orientation === 'top' ? '90deg' : '0deg';
   const isPortrait = orientation === 'bottom' || orientation === 'top';
-  const cellBg = ownerPlayer ? ownerPlayer.color + '28' : '#07101D';
+  const cellBg = ownerColor ? ownerColor + '28' : '#07101D';
 
   return (
     <TouchableOpacity
       activeOpacity={onLongPress ? 0.75 : 1}
-      onLongPress={onLongPress}
+      onLongPress={onLongPress ? () => onLongPress(space) : undefined}
       delayLongPress={350}
       style={[cellStyles.cell, { width: w, height: h, backgroundColor: cellBg }]}
     >
@@ -77,12 +134,17 @@ export const BoardCell = memo(function BoardCell({
             : { width: w, height: h },
         ]}>
           <Text
-            style={[cellStyles.nameText, ownerPlayer ? { color: ownerPlayer.color } : {}]}
+            style={[cellStyles.nameText, ownerColor ? { color: ownerColor } : null]}
             numberOfLines={1}
             adjustsFontSizeToFit
           >
             {shortName}
           </Text>
+          {space.price != null && (
+            <Text style={cellStyles.priceText} numberOfLines={1}>
+              {space.price.toLocaleString()}
+            </Text>
+          )}
         </View>
       ) : (
         <Text style={cellStyles.typeIcon}>{SPECIAL_LABELS[space.type] ?? ''}</Text>
@@ -99,16 +161,16 @@ export const BoardCell = memo(function BoardCell({
         </View>
       )}
 
-      {ownerPlayer && (
-        <View style={[cellStyles.ownerBadge, { backgroundColor: ownerPlayer.color }]}>
-          <Text style={cellStyles.ownerInitial}>{ownerPlayer.name[0]}</Text>
+      {ownerColor && (
+        <View style={[cellStyles.ownerBadge, { backgroundColor: ownerColor }]}>
+          <Text style={cellStyles.ownerInitial}>{ownerInitial}</Text>
         </View>
       )}
 
       {playersHere.length > 0 && (
         <View style={cellStyles.playersRow}>
-          {playersHere.slice(0, 3).map(p => (
-            <View key={p.id} style={[cellStyles.playerDot, { backgroundColor: p.color }]} />
+          {playersHere.slice(0, 4).map(p => (
+            <PlayerDot key={p.id} color={p.color} isCurrent={p.id === currentPlayerId} />
           ))}
         </View>
       )}
@@ -135,6 +197,13 @@ const cellStyles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.1,
   },
+  priceText: {
+    fontSize: 5.5,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.gold,
+    textAlign: 'center',
+    marginTop: 1,
+  },
   typeIcon:      { fontSize: 9, color: Colors.warmCream, opacity: 0.75 },
   buildingsRow: {
     position: 'absolute',
@@ -156,6 +225,15 @@ const cellStyles = StyleSheet.create({
     width: 7, height: 7, borderRadius: 4,
     borderWidth: 0.5, borderColor: Colors.warmCream,
   },
+  playerDotCurrent: {
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.9,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
   highlightOverlay: {
     position: 'absolute',
     inset: 0,
@@ -166,14 +244,28 @@ const cellStyles = StyleSheet.create({
 });
 
 export const GameBoard = memo(function GameBoard({
-  board, players, highlightPos, onCellLongPress,
+  board, players, highlightPos, currentPlayerId, onCellLongPress,
 }: {
   board: BoardProperty[];
   players: Player[];
   highlightPos?: number | null;
+  currentPlayerId?: string | null;
   onCellLongPress?: (space: BoardProperty) => void;
 }) {
   const { width, height } = useWindowDimensions();
+
+  // Resolve "who is standing here" and "who owns this" once per state change,
+  // instead of every cell scanning the whole roster on every render.
+  const { occupantsByIndex, ownersById } = useMemo(() => {
+    const occupants: Record<number, Player[]> = {};
+    const owners: Record<string, Player> = {};
+    for (const p of players) {
+      owners[p.id] = p;
+      if (p.isBankrupt) continue;
+      (occupants[p.position] ??= []).push(p);
+    }
+    return { occupantsByIndex: occupants, ownersById: owners };
+  }, [players]);
 
   // Scale the board to fit the screen: respect width (16px side margins) and
   // available height (380px reserved for top-bar + status + actions panel).
@@ -192,8 +284,8 @@ export const GameBoard = memo(function GameBoard({
   return (
     <View style={[boardStyles.board, { width: BOARD_ACTUAL, height: BOARD_ACTUAL }]}>
       <View style={[boardStyles.center, { top: CS2, left: CS2, right: CS2, bottom: CS2 }]}>
-        <Text style={[boardStyles.centerTitleAr, { fontSize: Math.round(CS * 1.4) }]}>دوّار</Text>
-        <Text style={[boardStyles.centerTitle, { fontSize: Math.round(CS * 0.45) }]}>DAWAAR</Text>
+        <Text style={[boardStyles.centerTitleAr, { fontSize: Math.round(CS * 1.4) }]}>東方</Text>
+        <Text style={[boardStyles.centerTitle, { fontSize: Math.round(CS * 0.4) }]}>EASTERN TYCOON</Text>
         <LinearGradient colors={[Colors.gold + '18', 'transparent']} style={boardStyles.centerGlow} />
       </View>
 
@@ -201,21 +293,29 @@ export const GameBoard = memo(function GameBoard({
         {bottomRow.map((space, i) => {
           const isC = i === 0 || i === 7;
           return (
-            <BoardCell key={space.index} space={space} players={players}
+            <BoardCell key={space.index} space={space}
+              occupants={occupantsByIndex[space.index]}
+              ownerColor={space.ownerId ? ownersById[space.ownerId]?.color ?? null : null}
+              ownerInitial={space.ownerId ? ownersById[space.ownerId]?.name[0] ?? null : null}
               w={isC ? CS2 : CS} h={CS2}
               orientation={isC ? 'corner' : 'bottom'}
               isHighlighted={highlightPos === space.index}
-              onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
+              currentPlayerId={currentPlayerId}
+              onLongPress={onCellLongPress} />
           );
         })}
       </View>
 
       <View style={[boardStyles.col, { right: 0, top: CS2, width: CS2 }]}>
         {rightCol.map(space => (
-          <BoardCell key={space.index} space={space} players={players}
+          <BoardCell key={space.index} space={space}
+            occupants={occupantsByIndex[space.index]}
+            ownerColor={space.ownerId ? ownersById[space.ownerId]?.color ?? null : null}
+            ownerInitial={space.ownerId ? ownersById[space.ownerId]?.name[0] ?? null : null}
             w={CS2} h={CS} orientation="right"
             isHighlighted={highlightPos === space.index}
-            onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
+            currentPlayerId={currentPlayerId}
+            onLongPress={onCellLongPress} />
         ))}
       </View>
 
@@ -223,21 +323,29 @@ export const GameBoard = memo(function GameBoard({
         {topRow.map((space, i) => {
           const isC = i === 0 || i === 7;
           return (
-            <BoardCell key={space.index} space={space} players={players}
+            <BoardCell key={space.index} space={space}
+              occupants={occupantsByIndex[space.index]}
+              ownerColor={space.ownerId ? ownersById[space.ownerId]?.color ?? null : null}
+              ownerInitial={space.ownerId ? ownersById[space.ownerId]?.name[0] ?? null : null}
               w={isC ? CS2 : CS} h={CS2}
               orientation={isC ? 'corner' : 'top'}
               isHighlighted={highlightPos === space.index}
-              onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
+              currentPlayerId={currentPlayerId}
+              onLongPress={onCellLongPress} />
           );
         })}
       </View>
 
       <View style={[boardStyles.col, { left: 0, top: CS2, width: CS2 }]}>
         {leftCol.map(space => (
-          <BoardCell key={space.index} space={space} players={players}
+          <BoardCell key={space.index} space={space}
+            occupants={occupantsByIndex[space.index]}
+            ownerColor={space.ownerId ? ownersById[space.ownerId]?.color ?? null : null}
+            ownerInitial={space.ownerId ? ownersById[space.ownerId]?.name[0] ?? null : null}
             w={CS2} h={CS} orientation="left"
             isHighlighted={highlightPos === space.index}
-            onLongPress={onCellLongPress ? () => onCellLongPress(space) : undefined} />
+            currentPlayerId={currentPlayerId}
+            onLongPress={onCellLongPress} />
         ))}
       </View>
     </View>

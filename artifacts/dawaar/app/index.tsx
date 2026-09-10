@@ -91,9 +91,9 @@ export default function HomeScreen() {
                 <Ionicons name="sync-outline" size={36} color={Colors.darkBg} />
               </LinearGradient>
             </View>
-            <Text style={styles.titleAr}>دوّار</Text>
-            <Text style={styles.titleEn}>DAWAAR</Text>
-            <Text style={styles.subtitle}>Middle East Monopoly</Text>
+            <Text style={styles.titleAr}>東方大亨</Text>
+            <Text style={styles.titleEn}>EASTERN TYCOON</Text>
+            <Text style={styles.subtitle}>East Asia Monopoly</Text>
           </View>
 
           {/* Mode Selection */}
@@ -136,7 +136,7 @@ export default function HomeScreen() {
                   </View>
                   <View style={styles.modeTextBlock}>
                     <Text style={styles.modeTitle}>Single Player</Text>
-                    <Text style={styles.modeDesc}>Play vs AI bots from across the Arab world</Text>
+                    <Text style={styles.modeDesc}>Play vs AI bots from across East Asia</Text>
                   </View>
                   <View style={styles.modeArrow}>
                     <Ionicons name="chevron-forward" size={20} color={Colors.gold} />
@@ -161,7 +161,7 @@ export default function HomeScreen() {
                   </View>
                   <View style={styles.modeTextBlock}>
                     <Text style={styles.modeTitle}>Challenges</Text>
-                    <Text style={styles.modeDesc}>Conquer regions of the Arab world. Earn reward points.</Text>
+                    <Text style={styles.modeDesc}>Conquer regions of the East. Earn reward points.</Text>
                   </View>
                   <View style={styles.modeArrow}>
                     <Ionicons name="chevron-forward" size={20} color={Colors.gold} />
@@ -198,7 +198,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
 
               <Text style={styles.footer}>
-                Inspired by the cities and landmarks of the Arab World
+                Inspired by the cities and landmarks of East Asia
               </Text>
 
               <TouchableOpacity

@@ -76,7 +76,7 @@ export default function SubscribeModal({ visible, onClose }: Props) {
               style={styles.header}
             >
               <Text style={styles.crownEmoji}>👑</Text>
-              <Text style={styles.title}>Dawaar Premium</Text>
+              <Text style={styles.title}>Eastern Tycoon Premium</Text>
               <Text style={styles.subtitle}>Play without limits — no ads, ever</Text>
             </LinearGradient>
 
@@ -156,7 +156,7 @@ export default function SubscribeModal({ visible, onClose }: Props) {
           <View style={styles.confirmBox}>
             <Text style={styles.confirmTitle}>Confirm Purchase</Text>
             <Text style={styles.confirmBody}>
-              Subscribe to Dawaar Premium for {priceString}/month?
+              Subscribe to Eastern Tycoon Premium for {priceString}/month?
             </Text>
             <View style={styles.confirmBtns}>
               <TouchableOpacity

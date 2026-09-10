@@ -48,14 +48,14 @@ export default function PrivacyScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.appName}>Dawaar — Middle East Monopoly</Text>
+        <Text style={styles.appName}>Eastern Tycoon — East Asia Monopoly</Text>
         <Text style={styles.updated}>Last updated: {LAST_UPDATED}</Text>
 
         <Section title="1. Introduction">
           <P>
-            Welcome to Dawaar ("we", "us", or "our"). This Privacy Policy explains how we collect,
+            Welcome to Eastern Tycoon ("we", "us", or "our"). This Privacy Policy explains how we collect,
             use, and protect your information when you use our mobile game application. By using
-            Dawaar, you agree to the practices described here.
+            Eastern Tycoon, you agree to the practices described here.
           </P>
         </Section>
 
@@ -75,7 +75,7 @@ export default function PrivacyScreen() {
             used to associate you with a multiplayer game session.
           </Li>
           <Li>
-            <Text style={styles.bold}>Purchase information</Text>: If you subscribe to Dawaar
+            <Text style={styles.bold}>Purchase information</Text>: If you subscribe to Eastern Tycoon
             Premium, purchase and subscription data is handled by RevenueCat on behalf of the Apple
             App Store and Google Play Store. We do not store payment card details.
           </Li>
@@ -90,7 +90,7 @@ export default function PrivacyScreen() {
         </Section>
 
         <Section title="4. Third-Party Services">
-          <P>Dawaar uses the following third-party services, each with their own Privacy Policies:</P>
+          <P>Eastern Tycoon uses the following third-party services, each with their own Privacy Policies:</P>
           <Li>
             <Text style={styles.bold}>RevenueCat</Text> — manages in-app subscriptions and
             purchase validation. See: revenuecat.com/privacy
@@ -116,7 +116,7 @@ export default function PrivacyScreen() {
 
         <Section title="6. Children's Privacy">
           <P>
-            Dawaar is designed for players aged 4 and older. We do not knowingly collect personal
+            Eastern Tycoon is designed for players aged 4 and older. We do not knowingly collect personal
             information from children under 13 beyond what is described in this policy. The game
             does not require account registration and no personally identifiable information is
             required to play.

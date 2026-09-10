@@ -35,7 +35,8 @@ export default {
     darkblue: '#3B82F6',
   },
 
-  // Player token colors
+  // Player token colors — one distinct color per join slot; must stay in sync
+  // with PLAYER_COLORS in artifacts/api-server/src/domains/players/types.ts
   players: [
     '#EF4444', // Red
     '#3B82F6', // Blue

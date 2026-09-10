@@ -18,19 +18,19 @@ export function applyCardAction(
     case 'go_to_go':
       newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: 0, money: p.money + 2000 } : p);
       break;
-    case 'go_to_medina': {
-      const medinaPos = board.findIndex(s => s.name === 'Medina');
-      if (medinaPos >= 0) {
-        if (player.position > medinaPos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
-        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: medinaPos } : p);
+    case 'go_to_beijing': {
+      const beijingPos = board.findIndex(s => s.name === 'Beijing');
+      if (beijingPos >= 0) {
+        if (player.position > beijingPos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
+        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: beijingPos } : p);
       }
       break;
     }
-    case 'go_to_doha': {
-      const dohaPos = board.findIndex(s => s.name === 'Doha');
-      if (dohaPos >= 0) {
-        if (player.position > dohaPos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
-        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: dohaPos } : p);
+    case 'go_to_jakarta': {
+      const jakartaPos = board.findIndex(s => s.name === 'Jakarta');
+      if (jakartaPos >= 0) {
+        if (player.position > jakartaPos) newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, money: p.money + 2000 } : p);
+        newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, position: jakartaPos } : p);
       }
       break;
     }

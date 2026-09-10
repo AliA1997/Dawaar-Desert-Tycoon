@@ -1,5 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { reconcileGameState } from '@/lib/reconcile';
 
 // Prefer an explicit override (set in .env when running locally), otherwise
 // fall back to the Replit dev domain pattern used in the hosted workspace.
@@ -79,6 +82,15 @@ export interface GameState {
 
 export type NpcDifficulty = 'easy' | 'medium' | 'hard';
 
+/**
+ * Health of the long-poll loop.
+ *  - `live`         — the last poll round-trip succeeded
+ *  - `reconnecting` — two or more consecutive failures; we are backing off and
+ *                     retrying. The board is showing the last known state.
+ *  - `paused`       — the app is backgrounded; no socket is held open
+ */
+export type ConnectionStatus = 'live' | 'reconnecting' | 'paused';
+
 export const TOKENS = [
   { id: 'camel',    label: 'Camel',    image: require('../assets/tokens/camel.png') },
   { id: 'falcon',   label: 'Falcon',   image: require('../assets/tokens/falcon.png') },
@@ -92,7 +104,7 @@ export function getTokenImage(tokenId: string): any {
   return TOKENS.find(t => t.id === tokenId)?.image ?? require('../assets/tokens/camel.png');
 }
 
-export const NPC_NAMES = ['Khalid', 'Tariq', 'Omar', 'Layla', 'Zaid'];
+export const NPC_NAMES = ['Kenji', 'Mei', 'Jin', 'Sakura', 'Wei'];
 export const NPC_TOKENS = ['falcon', 'dhow', 'palm', 'crescent', 'lamp'];
 
 export interface SavedGame {
@@ -110,6 +122,7 @@ interface GameContextType {
   error: string | null;
   isMyTurn: boolean;
   myPlayer: Player | null;
+  connection: ConnectionStatus;
   isSinglePlayer: boolean;
   npcPlayerIds: string[];
   npcThinking: boolean;
@@ -160,12 +173,31 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [savedGame, setSavedGame] = useState<SavedGame | null>(null);
   const [npcDifficulty, setNpcDifficulty] = useState<NpcDifficulty>('medium');
   const [rewardPoints, setRewardPoints] = useState(0);
+  const [connection, setConnection] = useState<ConnectionStatus>('live');
   const activeChallengeIdRef = useRef<string | null>(null);
   const rewardAwardedRef = useRef<Set<string>>(new Set());
 
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingActiveRef = useRef(false);
   const npcBotRunningRef = useRef(false);
+  // The highest `version` we have actually rendered, per game. Every state
+  // payload — poll or action response — is checked against it (see applyState).
+  const appliedVersionRef = useRef<{ gameId: string; version: number } | null>(null);
+  // The game the poll loop belongs to, readable from listeners that must not
+  // re-subscribe every render (AppState).
+  const activeGameIdRef = useRef<string | null>(null);
+  const pollFailuresRef = useRef(0);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  // Bumped every time a poll chain is torn down. A response that resolves after
+  // its chain was cancelled carries a stale epoch and is dropped instead of
+  // forking a second chain — a request already in flight cannot be recalled.
+  const pollEpochRef = useRef(0);
+  // Only a real `background` pauses us. iOS also emits `inactive` (Control
+  // Centre, a call banner, the app switcher) followed by `active`, and resuming
+  // on those would start a chain alongside the one still running.
+  const pausedRef = useRef(false);
+  const staleVersionStreakRef = useRef(0);
+  const notFoundStreakRef = useRef(0);
 
   const GAME_SAVE_KEY = '@dawaar_saved_game';
   const REWARD_POINTS_KEY = '@dawaar_reward_points';
@@ -227,39 +259,121 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return data;
   };
 
+  /**
+   * The only way a server payload reaches the screen.
+   *
+   * Every response carries a monotonic `version`, so anything that is not
+   * strictly newer than what we already rendered is dropped. That kills three
+   * distinct classes of visible jank at once:
+   *   - the long-poll's 20 s timeout, which replies with the *unchanged* state
+   *     and would otherwise re-render the whole board every 20 s for nothing;
+   *   - a poll response overtaking the action response that superseded it,
+   *     which made the board rubber-band backwards for a frame;
+   *   - a late reply landing on top of an optimistic update and undoing it.
+   *
+   * Optimistic updates and their rollbacks deliberately call `setGameState`
+   * directly: they re-use the current version, so they must bypass the guard.
+   */
+  const applyState = useCallback((next: GameState | null | undefined): boolean => {
+    if (!next) return false;
+    const applied = appliedVersionRef.current;
+    if (applied && applied.gameId === next.gameId && next.version <= applied.version) {
+      // Equal version is the long-poll timeout answering with unchanged state:
+      // always a no-op, always dropped.
+      //
+      // A *lower* version is ambiguous. One late response overtaken by a newer
+      // one is transient and must be ignored, but a server that restarted from
+      // an older JSON snapshot has genuinely gone backwards — and dropping it
+      // forever would freeze the board while `connection` still said "live".
+      // A second consecutive rewind means the server, not the network, so
+      // believe it and resync to whatever it now holds.
+      if (next.version === applied.version || ++staleVersionStreakRef.current < 2) {
+        return false;
+      }
+    }
+    staleVersionStreakRef.current = 0;
+    appliedVersionRef.current = { gameId: next.gameId, version: next.version };
+    // Keep object identity for every board space, player and log line that did
+    // not change, so the memoised board and lists can actually skip work.
+    setGameState(prev => reconcileGameState(prev, next));
+    if (next.diceRoll) setLastDiceRoll(next.diceRoll);
+    return true;
+  }, []);
+
+  // Retry schedule for a poll that could not reach the server: 1s, 2s, 4s, 8s,
+  // then a 15s ceiling, jittered so six reconnecting clients don't line up.
+  const retryDelayMs = () => {
+    const step = Math.min(Math.max(pollFailuresRef.current - 1, 0), 4);
+    return Math.min(1000 * 2 ** step, 15000) + Math.floor(Math.random() * 400);
+  };
+
   // Long-polling for game updates
   const startPolling = useCallback((gameId: string, version: number) => {
     if (!pollingActiveRef.current) return;
 
+    // Every hop of this chain carries the epoch it was started under. Anything
+    // that resolves after the chain was cancelled is discarded here.
+    const epoch = pollEpochRef.current;
+    const cancelled = () => !pollingActiveRef.current || pollEpochRef.current !== epoch;
+
+    const retry = () => {
+      if (cancelled()) return;
+      pollFailuresRef.current += 1;
+      // One dropped request is normal on mobile; two in a row is worth telling
+      // the player about, so a still board reads as "reconnecting", not "broken".
+      if (pollFailuresRef.current >= 2) setConnection('reconnecting');
+      pollingRef.current = setTimeout(() => startPolling(gameId, version), retryDelayMs());
+    };
+
     const poll = async () => {
-      if (!pollingActiveRef.current) return;
+      if (cancelled()) return;
       try {
         const url = `${API_BASE}/games/${gameId}/poll?version=${version}`;
         const res = await fetch(url);
-        if (!pollingActiveRef.current) return;
+        if (cancelled()) return;
         if (res.status === 200) {
           const data: GameState = await res.json();
-          setGameState(data);
-          if (data.diceRoll) setLastDiceRoll(data.diceRoll);
+          if (cancelled()) return;
+          pollFailuresRef.current = 0;
+          notFoundStreakRef.current = 0;
+          setConnection('live');
+          applyState(data);
           if (data.status !== 'finished') {
             // Server uses event-driven long-polling — re-poll immediately so
             // the next state delta surfaces as soon as the server emits.
             pollingRef.current = setTimeout(() => startPolling(gameId, data.version), 0);
+          } else {
+            activeGameIdRef.current = null;
+          }
+        } else if (res.status === 404) {
+          // One 404 is not proof the game is gone: the API keeps live games in
+          // memory with a debounced JSON snapshot, so a redeploy or a container
+          // swap can answer 404 for a game that is about to be there again.
+          // Retry once, then stop — but keep `activeGameIdRef` so returning to
+          // the app gets one more attempt instead of a permanently dead board.
+          notFoundStreakRef.current += 1;
+          if (notFoundStreakRef.current >= 2) {
+            pollingActiveRef.current = false;
+            setConnection('reconnecting');
+            setError('This game is no longer available on the server.');
+          } else {
+            retry();
           }
         } else {
-          pollingRef.current = setTimeout(() => startPolling(gameId, version), 2000);
+          retry();
         }
       } catch {
-        if (pollingActiveRef.current) {
-          pollingRef.current = setTimeout(() => startPolling(gameId, version), 3000);
-        }
+        retry();
       }
     };
     poll();
-  }, []);
+  }, [applyState]);
 
   const stopPolling = useCallback(() => {
     pollingActiveRef.current = false;
+    // Invalidate in-flight requests: a long-poll can be parked for 20 s, and
+    // clearing the timer does nothing to a fetch that is already open.
+    pollEpochRef.current += 1;
     if (pollingRef.current) {
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
@@ -267,11 +381,95 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const attachToGame = useCallback((state: GameState) => {
-    setGameState(state);
-    if (state.diceRoll) setLastDiceRoll(state.diceRoll);
+    // Whatever was running belongs to the game we are leaving. Without this, a
+    // create/join/resume while a game is live leaves the old chain polling, and
+    // its payloads pass the version guard unchallenged (different gameId) —
+    // flipping the screen back to the abandoned game.
+    stopPolling();
+    appliedVersionRef.current = null;
+    staleVersionStreakRef.current = 0;
+    notFoundStreakRef.current = 0;
+    applyState(state);
+    activeGameIdRef.current = state.gameId;
+    pollFailuresRef.current = 0;
+    pausedRef.current = false;
+    setConnection('live');
     pollingActiveRef.current = true;
     startPolling(state.gameId, state.version);
-  }, [startPolling]);
+  }, [applyState, startPolling, stopPolling]);
+
+  /**
+   * Re-attach after the app was backgrounded.
+   *
+   * A long-poll held across a suspend is not reliably alive when the OS hands
+   * the app back — the socket may have been torn down while we were away, and
+   * the loop would sit on a request that never resolves. That is the "board
+   * that never updates again" bug. Pull the current state once, then restart
+   * the loop from that version.
+   */
+  const resumePolling = useCallback(async (gameId: string) => {
+    stopPolling();
+    const epoch = pollEpochRef.current;
+    try {
+      const state: GameState = await api(`/games/${gameId}`);
+      if (pollEpochRef.current !== epoch) return; // backgrounded again mid-resync
+      notFoundStreakRef.current = 0;
+      applyState(state);
+      pollFailuresRef.current = 0;
+      setConnection('live');
+      if (state.status === 'finished') {
+        activeGameIdRef.current = null;
+        return;
+      }
+    } catch {
+      // Fall through — the poll loop below owns the retry/backoff behavior.
+      if (pollEpochRef.current !== epoch) return;
+      setConnection('reconnecting');
+    }
+    pollingActiveRef.current = true;
+    startPolling(gameId, appliedVersionRef.current?.version ?? 0);
+  }, [applyState, startPolling, stopPolling]);
+
+  /**
+   * Undo an optimistic update that the server rejected.
+   *
+   * Restoring the snapshot alone is not enough: `appliedVersionRef` may have
+   * moved on (another player's move landed while our request was in flight),
+   * and the poll loop is parked on a version whose content we just threw away.
+   * Re-arm both from the snapshot so the server answers immediately with what
+   * it actually holds, instead of leaving a stale board that reports itself
+   * as live.
+   */
+  const rollbackTo = useCallback((snapshot: GameState) => {
+    setGameState(snapshot);
+    appliedVersionRef.current = { gameId: snapshot.gameId, version: snapshot.version };
+    staleVersionStreakRef.current = 0;
+    if (activeGameIdRef.current === snapshot.gameId && !pausedRef.current) {
+      stopPolling();
+      pollingActiveRef.current = true;
+      startPolling(snapshot.gameId, snapshot.version);
+    }
+  }, [startPolling, stopPolling]);
+
+  // R-23: an app is suspended and resumed, not reloaded. Drop the poll while
+  // backgrounded (no socket, no wakeups, no battery) and resync on return.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      const prev = appStateRef.current;
+      appStateRef.current = next;
+      const gameId = activeGameIdRef.current;
+      if (!gameId) return;
+      if (next === 'background') {
+        pausedRef.current = true;
+        stopPolling();
+        setConnection('paused');
+      } else if (next === 'active' && prev !== 'active' && pausedRef.current) {
+        pausedRef.current = false;
+        resumePolling(gameId);
+      }
+    });
+    return () => sub.remove();
+  }, [stopPolling, resumePolling]);
 
   // ─── NPC Bot Logic ───────────────────────────────────────────────────────────
   // Runs whenever the current turn changes in a single-player game
@@ -309,7 +507,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             try {
               const bailState = await api(`/games/${currentState.gameId}/pay-jail`, 'POST', { playerId: currentId });
               currentState = bailState as GameState;
-              setGameState(currentState);
+              applyState(currentState);
               await delay(600);
             } catch { /* can't pay — will roll for doubles instead */ }
           }
@@ -317,7 +515,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           // 3. Roll dice
           const rollData = await api(`/games/${currentState.gameId}/roll`, 'POST', { playerId: currentId });
           currentState = rollData.gameState as GameState;
-          setGameState(currentState);
+          applyState(currentState);
           setLastDiceRoll(rollData.dice);
 
           await delay(1000);
@@ -356,7 +554,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 try {
                   const boughtState = await api(`/games/${currentState.gameId}/buy`, 'POST', { playerId: currentId });
                   currentState = boughtState as GameState;
-                  setGameState(currentState);
+                  applyState(currentState);
                   await delay(600);
                 } catch { /* ignore */ }
               }
@@ -372,7 +570,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             try {
               const taxState = await api(`/games/${currentState.gameId}/choose-tax`, 'POST', { playerId: currentId, choice: cheaperChoice });
               currentState = taxState as GameState;
-              setGameState(currentState);
+              applyState(currentState);
               await delay(400);
             } catch { /* ignore */ }
           }
@@ -397,7 +595,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                   await delay(700);
                   const builtState = await api(`/games/${currentState.gameId}/build`, 'POST', { playerId: currentId, propertyIndex: candidate.index });
                   currentState = builtState as GameState;
-                  setGameState(currentState);
+                  applyState(currentState);
                   await delay(500);
                 } catch { /* not buildable this turn, ignore */ }
               }
@@ -419,7 +617,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                     playerId: currentId, propertyIndex: target.index, action: 'unmortgage',
                   });
                   currentState = unmortgageState as GameState;
-                  setGameState(currentState);
+                  applyState(currentState);
                   await delay(400);
                 } catch { /* ignore */ }
               }
@@ -451,7 +649,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                       offeredMoney: offerAmount, requestedMoney: 0,
                     });
                     currentState = tradeState as GameState;
-                    setGameState(currentState);
+                    applyState(currentState);
                     tradeMade = true;
                   } catch { /* ignore */ }
                   break;
@@ -483,7 +681,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 action: 'mortgage',
               });
               currentState = mortState as GameState;
-              setGameState(currentState);
+              applyState(currentState);
               await delay(500);
             } catch { /* ignore */ }
           }
@@ -492,7 +690,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         // 8. End turn
         await delay(800);
         const endState = await api(`/games/${currentState.gameId}/end-turn`, 'POST', { playerId: currentId });
-        setGameState(endState as GameState);
+        applyState(endState as GameState);
       } catch {
         // silently ignore bot errors
       } finally {
@@ -526,7 +724,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (npcBotRunningRef.current) return;
       try {
         const endState = await api(`/games/${gameState.gameId}/end-turn`, 'POST', { playerId: currentId });
-        setGameState(endState as GameState);
+        applyState(endState as GameState);
       } catch { /* ignore */ }
     }, 3500);
 
@@ -650,6 +848,28 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     });
   }, [gameState?.status, gameState?.winnerId, myPlayerId]);
 
+  // Award 500 tokens for winning any game (on top of challenge bonuses)
+  useEffect(() => {
+    if (!gameState || gameState.status !== 'finished' || !gameState.winnerId) return;
+    if (gameState.winnerId !== myPlayerId) return;
+    const key = `${gameState.gameId}_win`;
+    if (rewardAwardedRef.current.has(key)) return;
+    rewardAwardedRef.current.add(key);
+    setRewardPoints(prev => {
+      const next = prev + 500;
+      AsyncStorage.setItem(REWARD_POINTS_KEY, String(next));
+      // Mirror to server (best-effort)
+      if (myPlayerId) {
+        fetch(`${API_BASE}/players/${myPlayerId}/reward`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ points: 500 }),
+        }).catch(() => {});
+      }
+      return next;
+    });
+  }, [gameState?.status, gameState?.winnerId, myPlayerId]);
+
   const createChallengeGame = useCallback(async (
     boardId: string,
     name: string,
@@ -738,7 +958,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/start`, 'POST', { playerId: myPlayerId });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -749,7 +969,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const data = await api(`/games/${gameState.gameId}/roll`, 'POST', { playerId: myPlayerId });
-      setGameState(data.gameState);
+      applyState(data.gameState);
       setLastDiceRoll(data.dice);
       return { dice: data.dice, isDoubles: data.isDoubles };
     } catch (e: any) {
@@ -782,13 +1002,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       const state = await api(`/games/${gameState.gameId}/buy`, 'POST', { playerId: myPlayerId });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       // Revert optimistic update
-      setGameState(snapshot);
+      rollbackTo(snapshot);
       setError(e.message);
     }
-  }, [gameState, myPlayerId]);
+  }, [gameState, myPlayerId, applyState, rollbackTo]);
 
   const endTurn = useCallback(async () => {
     if (!gameState || !myPlayerId) return;
@@ -798,12 +1018,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setGameState({ ...snapshot, hasRolled: false });
     try {
       const state = await api(`/games/${gameState.gameId}/end-turn`, 'POST', { playerId: myPlayerId });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
-      setGameState(snapshot);
+      rollbackTo(snapshot);
       setError(e.message);
     }
-  }, [gameState, myPlayerId]);
+  }, [gameState, myPlayerId, applyState, rollbackTo]);
 
   const setReady = useCallback(async (ready: boolean) => {
     if (!gameState || !myPlayerId) return;
@@ -816,19 +1036,19 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     });
     try {
       const state = await api(`/games/${gameState.gameId}/ready`, 'POST', { playerId: myPlayerId, ready });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
-      setGameState(snapshot);
+      rollbackTo(snapshot);
       setError(e.message);
     }
-  }, [gameState, myPlayerId]);
+  }, [gameState, myPlayerId, applyState, rollbackTo]);
 
   const payJail = useCallback(async () => {
     if (!gameState || !myPlayerId) return;
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/pay-jail`, 'POST', { playerId: myPlayerId });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -839,7 +1059,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/build`, 'POST', { playerId: myPlayerId, propertyIndex });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -850,7 +1070,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/mortgage`, 'POST', { playerId: myPlayerId, propertyIndex, action });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -868,7 +1088,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         offeredMoney,
         requestedMoney,
       });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -883,7 +1103,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         toPlayerId: myPlayerId,
         accept: true,
       });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -897,7 +1117,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         toPlayerId: myPlayerId,
         decline: true,
       });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -908,7 +1128,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/choose-tax`, 'POST', { playerId: myPlayerId, choice });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -919,7 +1139,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/reward`, 'POST', { playerId: myPlayerId });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -930,7 +1150,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/sell-house`, 'POST', { playerId: myPlayerId, propertyIndex });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -941,7 +1161,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const state = await api(`/games/${gameState.gameId}/auction-buy`, 'POST', { winnerId, propertyIndex, price });
-      setGameState(state);
+      applyState(state);
     } catch (e: any) {
       setError(e.message);
     }
@@ -980,6 +1200,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.removeItem(GAME_SAVE_KEY).catch(() => {});
     setSavedGame(null);
     stopPolling();
+    activeGameIdRef.current = null;
+    appliedVersionRef.current = null;
+    pollFailuresRef.current = 0;
+    staleVersionStreakRef.current = 0;
+    notFoundStreakRef.current = 0;
+    pausedRef.current = false;
+    setConnection('live');
     setGameState(null);
     setLastDiceRoll(null);
     setError(null);
@@ -1002,6 +1229,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       error,
       isMyTurn,
       myPlayer,
+      connection,
       isSinglePlayer,
       npcPlayerIds,
       npcThinking,
