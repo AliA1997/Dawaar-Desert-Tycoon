@@ -1,96 +1,45 @@
 name: Claude Code Review
 
-# Automatic review on every pull request. Claude posts inline comments on the
-# diff plus a top-level summary. Requires the Claude GitHub App to be installed
-# on this repository and a CLAUDE_CODE_OAUTH_TOKEN secret to be set (both are
-# done by `/install-github-app` in Claude Code).
-
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-# One review per branch: a new push cancels the review still running on the old head.
-concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+    types: [opened, synchronize, ready_for_review, reopened]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
 
 jobs:
-  review:
-    # Skip drafts and PRs opened by bots.
-    if: github.event.pull_request.draft == false && github.event.pull_request.user.type != 'Bot'
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+      issues: read
       id-token: write
-      actions: read
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Claude review
+      - name: Run Claude Code Review
+        id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
 
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
-
-            Review this pull request. `CLAUDE.md` at the repo root is the project
-            constitution and is binding — read it first and judge the diff against it.
-
-            Dawaar is a pnpm monorepo: an Express API in `artifacts/api-server`, an Expo
-            React Native client in `artifacts/dawaar`, and shared contract/db packages in
-            `lib/`. Weight your review toward these, in order:
-
-            1. **The long-poll contract.** `GET /api/games/:gameId/poll` holds a request
-               open until `GameState.version` advances, driven by the `gameEvents`
-               EventEmitter. Every state change MUST bump `version`. A mutation that
-               forgets to is a client that silently never updates. Check every new or
-               changed state-writing path for this.
-
-            2. **Purity and immutability of game logic.** Domain rules are pure functions
-               over `GameState` returning `{ state, error }`. They must never mutate the
-               argument — they spread a new state and bump `version`. Flag any in-place
-               mutation, any thrown exception where an `error` string belongs, and any
-               persistence or HTTP concern that leaked into a rule function.
-
-            3. **Memory and lifetime.** Live game state is an in-memory `Map` with a
-               debounced JSON snapshot. Look for unbounded growth (games that are never
-               evicted, `log` arrays that grow forever), `EventEmitter` listeners that are
-               added per request and never removed, timers that outlive their game, and
-               closures retained by pending long-poll responses. An eviction policy with
-               no test is a leak with extra steps — say so.
-
-            4. **Caching correctness.** Immutable data (board layouts, challenge boards,
-               card decks) may be cached and should be. Mutable game state must NOT be —
-               a cache or an ETag on the poll endpoint or on any mutation response is a
-               correctness bug, not an optimization. Flag either direction.
-
-            5. **The generated contract.** `lib/api-spec/openapi.yaml` is the source of
-               truth; Orval generates `lib/api-client-react` and `lib/api-zod`. Anything
-               hand-edited under a `generated/` directory is a defect. A route whose shape
-               drifted from the spec is a defect.
-
-            6. **House conventions.** ESM imports carry `.js` extensions in server source.
-               Errors are `404 { error: 'Game not found' }` and `400 { error: '<message>' }`.
-               Money is DHS. Bilingual `name` / `nameAr` fields stay in pairs. `GameState`,
-               `Player` and `BoardProperty` are duplicated in the client's
-               `GameContext.tsx` — if `domains/turns/state.ts` changed and the client copy
-               did not, that is a bug worth flagging.
-
-            7. **Tests.** New behavior needs `vitest` coverage of the success path AND every
-               `error` branch. Missing error-branch tests are worth calling out.
-
-            Post specific problems as inline comments on the lines they affect. Use one
-            top-level comment for the overall verdict. Be concrete: name the input that
-            breaks and what goes wrong. Do not pad the review with praise or with style
-            nits the project has clearly decided against — if the diff is clean, say that
-            plainly and stop.
-
-          claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
