@@ -1,4 +1,4 @@
-import type { GameState, TradeOffer } from '../turns/state.js';
+import { appendLog, type GameState, type TradeOffer } from '../turns/state.js';
 
 export function proposeTrade(state: GameState, trade: TradeOffer): { state: GameState; error?: string } {
   const fromPlayer = state.players.find(p => p.id === trade.fromPlayerId);
@@ -18,7 +18,7 @@ export function proposeTrade(state: GameState, trade: TradeOffer): { state: Game
       ...state,
       pendingTrade: trade,
       version: state.version + 1,
-      log: [...state.log, { message: `${fromPlayer.name} proposed a trade with ${toPlayer.name}`, timestamp: new Date().toISOString(), playerId: trade.fromPlayerId }].slice(-50),
+      log: appendLog(state.log, { message: `${fromPlayer.name} proposed a trade with ${toPlayer.name}`, timestamp: new Date().toISOString(), playerId: trade.fromPlayerId }),
     },
   };
 }
@@ -64,7 +64,7 @@ export function acceptTrade(state: GameState, playerId: string): { state: GameSt
       board: newBoard,
       pendingTrade: null,
       version: state.version + 1,
-      log: [...state.log, { message: `${toPlayer.name} accepted ${fromPlayer.name}'s trade offer!`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+      log: appendLog(state.log, { message: `${toPlayer.name} accepted ${fromPlayer.name}'s trade offer!`, timestamp: new Date().toISOString(), playerId }),
     },
   };
 }
@@ -82,11 +82,11 @@ export function declineTrade(state: GameState, playerId: string): { state: GameS
       ...state,
       pendingTrade: null,
       version: state.version + 1,
-      log: [...state.log, {
+      log: appendLog(state.log, {
         message: `${toPlayer?.name ?? 'Player'} declined ${fromPlayer?.name ?? 'opponent'}'s trade offer`,
         timestamp: new Date().toISOString(),
         playerId,
-      }].slice(-50),
+      }),
     },
   };
 }

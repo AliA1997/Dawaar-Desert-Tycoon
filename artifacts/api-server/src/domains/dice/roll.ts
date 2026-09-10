@@ -2,6 +2,7 @@ import { CHANCE_CARDS, COMMUNITY_CARDS } from '../board/index.js';
 import { applyCardAction } from '../events/cards.js';
 import { calculateRent } from '../properties/rent.js';
 import {
+  appendLog,
   computeNetWorth,
   type GameLog,
   type GameState,
@@ -50,7 +51,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
         logs.push({ message: `${player.name} is stuck in jail (turn ${jailTurns})`, timestamp: new Date().toISOString(), playerId });
         newPlayers = newPlayers.map(p => p.id === playerId ? { ...p, jailTurns, doublesCount: 0 } : p);
         return {
-          state: { ...state, players: newPlayers, diceRoll: [d1, d2], hasRolled: true, version: state.version + 1, log: [...state.log, ...logs], freeParkingPool: newFreeParkingPool, pendingTaxChoice: null },
+          state: { ...state, players: newPlayers, diceRoll: [d1, d2], hasRolled: true, version: state.version + 1, log: appendLog(state.log, ...logs), freeParkingPool: newFreeParkingPool, pendingTaxChoice: null },
           dice: [d1, d2],
           isDoubles: false,
         };
@@ -185,7 +186,7 @@ export function rollDice(state: GameState, playerId: string): { state: GameState
     diceRoll: [d1, d2],
     hasRolled: finalHasRolled,
     version: state.version + 1,
-    log: [...state.log, ...logs].slice(-50),
+    log: appendLog(state.log, ...logs),
     status: newStatus,
     winnerId,
     freeParkingPool: newFreeParkingPool,

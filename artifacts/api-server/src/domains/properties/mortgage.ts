@@ -1,4 +1,4 @@
-import type { GameState } from '../turns/state.js';
+import { appendLog, type GameState } from '../turns/state.js';
 
 export function mortgageProperty(state: GameState, playerId: string, propertyIndex: number, action: 'mortgage' | 'unmortgage'): { state: GameState; error?: string } {
   const player = state.players.find(p => p.id === playerId);
@@ -20,7 +20,7 @@ export function mortgageProperty(state: GameState, playerId: string, propertyInd
         players: newPlayers,
         board: newBoard,
         version: state.version + 1,
-        log: [...state.log, { message: `${player.name} mortgaged ${space.name} for ${mortgageValue} DHS`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+        log: appendLog(state.log, { message: `${player.name} mortgaged ${space.name} for ${mortgageValue} DHS`, timestamp: new Date().toISOString(), playerId }),
       },
     };
   } else {
@@ -35,7 +35,7 @@ export function mortgageProperty(state: GameState, playerId: string, propertyInd
         players: newPlayers,
         board: newBoard,
         version: state.version + 1,
-        log: [...state.log, { message: `${player.name} unmortgaged ${space.name} for ${unmortgageCost} DHS`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+        log: appendLog(state.log, { message: `${player.name} unmortgaged ${space.name} for ${unmortgageCost} DHS`, timestamp: new Date().toISOString(), playerId }),
       },
     };
   }

@@ -1,6 +1,6 @@
 import { CHALLENGE_BOARDS } from '../board/index.js';
 import { makePlayer, type Player } from '../players/types.js';
-import { createInitialBoard, getNextPlayerId, type GameState, type GameStatus } from './state.js';
+import { appendLog, createInitialBoard, getNextPlayerId, type GameState, type GameStatus } from './state.js';
 
 export function createGame(gameId: string, playerName: string, playerId: string, token: string, boardId?: string): GameState {
   const player: Player = makePlayer(playerId, playerName, token, 0);
@@ -35,7 +35,7 @@ export function joinGame(state: GameState, playerName: string, playerId: string,
       ...state,
       players: [...state.players, player],
       version: state.version + 1,
-      log: [...state.log, { message: `${playerName} joined the game`, timestamp: new Date().toISOString(), playerId }],
+      log: appendLog(state.log, { message: `${playerName} joined the game`, timestamp: new Date().toISOString(), playerId }),
     },
   };
 }
@@ -50,11 +50,11 @@ export function setReady(state: GameState, playerId: string, ready: boolean): { 
       ...state,
       players: state.players.map(p => p.id === playerId ? { ...p, ready } : p),
       version: state.version + 1,
-      log: [...state.log, {
+      log: appendLog(state.log, {
         message: `${player.name} is ${ready ? 'ready' : 'not ready'}`,
         timestamp: new Date().toISOString(),
         playerId,
-      }].slice(-50),
+      }),
     },
   };
 }
@@ -70,7 +70,7 @@ export function startGame(state: GameState, playerId: string): { state: GameStat
       status: 'playing' as GameStatus,
       currentPlayerId: state.players[0].id,
       version: state.version + 1,
-      log: [...state.log, { message: 'Game started! Good luck!', timestamp: new Date().toISOString() }],
+      log: appendLog(state.log, { message: 'Game started! Good luck!', timestamp: new Date().toISOString() }),
     },
   };
 }
@@ -92,7 +92,7 @@ export function endTurn(state: GameState, playerId: string): { state: GameState;
       hasRolled: false,
       diceRoll: null,
       version: state.version + 1,
-      log: [...state.log, { message: `${nextPlayer.name}'s turn`, timestamp: new Date().toISOString() }].slice(-50),
+      log: appendLog(state.log, { message: `${nextPlayer.name}'s turn`, timestamp: new Date().toISOString() }),
       players: state.players.map(p => p.id === playerId ? { ...p, doublesCount: 0 } : p),
     },
   };
@@ -117,11 +117,11 @@ export function payJail(state: GameState, playerId: string): { state: GameState;
       ...state,
       players: newPlayers,
       version: state.version + 1,
-      log: [...state.log, {
+      log: appendLog(state.log, {
         message: `${player.name} paid 500 DHS bail and is free to roll!`,
         timestamp: new Date().toISOString(),
         playerId,
-      }].slice(-50),
+      }),
     },
   };
 }

@@ -48,7 +48,16 @@ Thumbs.db
 .cache/
 .local/
 artifacts/api-server/data/games.json
+artifacts/api-server/data/games.test.json
 artifacts/api-server/data/players.test.json
 
 # Claude Code (personal, not shared)
 .claude/settings.local.json
+
+# Environment. `.env.example` is committed (every key, no value); nothing else is.
+# NOTE: artifacts/.env.local and artifacts/api-server/.env.local were already
+# tracked before this rule existed — this rule does not untrack them. See
+# Najd-workspace/Dawaar-Desert-Tycoon/NOTES.md.
+.env
+.env.*
+!.env.example

@@ -1,4 +1,4 @@
-import type { GameState } from '../turns/state.js';
+import { appendLog, type GameState } from '../turns/state.js';
 
 export function chooseTax(state: GameState, playerId: string, choice: 'flat' | 'percent'): { state: GameState; error?: string } {
   const tc = state.pendingTaxChoice;
@@ -19,11 +19,11 @@ export function chooseTax(state: GameState, playerId: string, choice: 'flat' | '
       freeParkingPool: newFreeParkingPool,
       pendingTaxChoice: null,
       version: state.version + 1,
-      log: [...state.log, {
+      log: appendLog(state.log, {
         message: `${player.name} paid ${amount.toLocaleString()} DHS tax (${choice === 'flat' ? 'flat rate' : '10% of net worth'}) — added to Picnic pool`,
         timestamp: new Date().toISOString(),
         playerId,
-      }].slice(-50),
+      }),
     },
   };
 }

@@ -1,4 +1,4 @@
-import type { GameState } from '../turns/state.js';
+import { appendLog, type GameState } from '../turns/state.js';
 
 export function buyProperty(state: GameState, playerId: string): { state: GameState; error?: string } {
   if (state.currentPlayerId !== playerId) return { state, error: 'Not your turn' };
@@ -21,7 +21,7 @@ export function buyProperty(state: GameState, playerId: string): { state: GameSt
       players: newPlayers,
       board: newBoard,
       version: state.version + 1,
-      log: [...state.log, { message: `${player.name} bought ${space.name} for ${space.price} DHS`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+      log: appendLog(state.log, { message: `${player.name} bought ${space.name} for ${space.price} DHS`, timestamp: new Date().toISOString(), playerId }),
     },
   };
 }

@@ -1,4 +1,4 @@
-import type { GameState } from '../turns/state.js';
+import { appendLog, type GameState } from '../turns/state.js';
 
 export function auctionBuy(state: GameState, winnerId: string, propertyIndex: number, price: number): { state: GameState; error?: string } {
   const winner = state.players.find(p => p.id === winnerId);
@@ -23,10 +23,7 @@ export function auctionBuy(state: GameState, winnerId: string, propertyIndex: nu
       players: newPlayers,
       board: newBoard,
       version: state.version + 1,
-      log: [
-        ...state.log,
-        { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId },
-      ].slice(-50),
+      log: appendLog(state.log, { message: `${winner.name} won the auction for ${space.name} at ${price.toLocaleString()} DHS`, timestamp: new Date().toISOString(), playerId: winnerId }),
     },
   };
 }

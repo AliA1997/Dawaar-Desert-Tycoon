@@ -1,4 +1,4 @@
-import { ownsColorGroup, type GameState } from '../turns/state.js';
+import { appendLog, ownsColorGroup, type GameState } from '../turns/state.js';
 
 export function buildHouse(state: GameState, playerId: string, propertyIndex: number): { state: GameState; error?: string } {
   const player = state.players.find(p => p.id === playerId);
@@ -51,7 +51,7 @@ export function buildHouse(state: GameState, playerId: string, propertyIndex: nu
       players: newPlayers,
       board: newBoard,
       version: state.version + 1,
-      log: [...state.log, { message: `${player.name} ${buildText} on ${space.name}`, timestamp: new Date().toISOString(), playerId }].slice(-50),
+      log: appendLog(state.log, { message: `${player.name} ${buildText} on ${space.name}`, timestamp: new Date().toISOString(), playerId }),
     },
   };
 }
@@ -86,7 +86,7 @@ export function sellHouse(state: GameState, playerId: string, propertyIndex: num
       players: newPlayers,
       board: newBoard,
       version: state.version + 1,
-      log: [...state.log, { message: logMessage, timestamp: new Date().toISOString(), playerId }].slice(-50),
+      log: appendLog(state.log, { message: logMessage, timestamp: new Date().toISOString(), playerId }),
     },
   };
 }

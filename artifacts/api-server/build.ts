@@ -62,6 +62,16 @@ async function buildAll() {
     outfile: path.resolve(distDir, "index.cjs"),
     define: {
       "process.env.NODE_ENV": '"production"',
+      // The source is ESM and resolves its data directory from
+      // `import.meta.url`, but this bundle is CJS — where esbuild compiles
+      // `import.meta` to `{}`, making `import.meta.url` undefined. The built
+      // server therefore threw ERR_INVALID_ARG_TYPE out of `fileURLToPath` at
+      // load and never reached `listen`; `pnpm build && node dist/index.cjs`
+      // reproduces it. Point it at a real file URL instead.
+      "import.meta.url": "__buildFileUrl",
+    },
+    banner: {
+      js: "const __buildFileUrl = require('url').pathToFileURL(__filename).href;",
     },
     minify: true,
     external: externals,
