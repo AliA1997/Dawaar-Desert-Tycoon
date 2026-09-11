@@ -49,6 +49,7 @@ Thumbs.db
 .local/
 artifacts/api-server/data/games.json
 artifacts/api-server/data/games.test.json
+artifacts/api-server/data/players.json
 artifacts/api-server/data/players.test.json
 
 # Claude Code (personal, not shared)
