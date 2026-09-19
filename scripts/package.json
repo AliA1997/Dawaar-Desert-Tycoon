@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "diagrams": "python ./diagrams/render_all.py",
     "seed:revenuecat": "tsx ./src/seedRevenueCat.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

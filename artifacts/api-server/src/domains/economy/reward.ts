@@ -1,4 +1,4 @@
-import type { GameState } from '../turns/state.js';
+import { appendLog, type GameState } from '../turns/state.js';
 
 const REWARD = 1500;
 
@@ -14,14 +14,11 @@ export function claimAdReward(state: GameState, playerId: string): { state: Game
         p.id === playerId ? { ...p, money: p.money + REWARD } : p
       ),
       version: state.version + 1,
-      log: [
-        ...state.log,
-        {
-          message: `${player.name} watched a sponsored video and earned ${REWARD} DHS!`,
-          timestamp: new Date().toISOString(),
-          playerId,
-        },
-      ].slice(-50),
+      log: appendLog(state.log, {
+        message: `${player.name} watched a sponsored video and earned ${REWARD} DHS!`,
+        timestamp: new Date().toISOString(),
+        playerId,
+      }),
     },
   };
 }

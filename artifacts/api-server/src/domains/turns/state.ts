@@ -59,6 +59,31 @@ export interface GameState {
   pendingTaxChoice: PendingTaxChoice | null;
 }
 
+/**
+ * Hard ceiling on `GameState.log`.
+ *
+ * The log is the only field on `GameState` that grows without bound, and it is
+ * serialized into every poll response, every action response and every snapshot
+ * write — so an uncapped log costs memory, mobile bandwidth and disk at once.
+ */
+export const MAX_LOG_ENTRIES = 50;
+
+/**
+ * Append to a game log and enforce {@link MAX_LOG_ENTRIES} in one place.
+ *
+ * The cap used to be a `.slice(-50)` repeated at each call site, which is a rule
+ * you have to remember — and four call sites had already forgotten it, including
+ * the jail branch of the dice roll. Appending through here makes the bound
+ * structural instead.
+ *
+ * Returns a new array; never mutates `log`.
+ */
+export function appendLog(log: GameLog[], ...entries: GameLog[]): GameLog[] {
+  if (entries.length === 0) return log;
+  const next = [...log, ...entries];
+  return next.length > MAX_LOG_ENTRIES ? next.slice(-MAX_LOG_ENTRIES) : next;
+}
+
 export function createInitialBoard(sourceBoard?: BoardSpace[]): BoardProperty[] {
   return (sourceBoard ?? BOARD).map(space => ({
     index: space.index,

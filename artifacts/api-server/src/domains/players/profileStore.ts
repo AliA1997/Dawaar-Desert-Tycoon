@@ -1,17 +1,15 @@
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { config } from '../../config.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', '..', '..', 'data');
+const DATA_DIR = config.dataDir;
 
 // The suite exercises the real reward flow, which persists. Writing that to the
 // tracked `players.json` meant every `pnpm test:api` run left fixture profiles
 // in the working tree — noise that got committed by hand more than once. Tests
 // get their own (gitignored) file instead.
-const isTest = !!process.env.VITEST || process.env.NODE_ENV === 'test';
-const PLAYERS_FILE = path.join(DATA_DIR, isTest ? 'players.test.json' : 'players.json');
+const PLAYERS_FILE = path.join(DATA_DIR, config.isTest ? 'players.test.json' : 'players.json');
 
 export interface PlayerProfile {
   playerId: string;
@@ -28,6 +26,7 @@ let dirty = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let writingPromise: Promise<void> | null = null;
 const DEBOUNCE_MS = 250;
+let snapshotFailures = 0;
 
 function loadProfiles(): void {
   try {
@@ -36,7 +35,9 @@ function loadProfiles(): void {
       const obj = JSON.parse(raw) as Record<string, PlayerProfile>;
       for (const [id, p] of Object.entries(obj)) profiles.set(id, p);
     }
-  } catch { /* corrupt — fresh */ }
+  } catch (err) {
+    console.error('[profileStore] Could not read profiles; starting empty.', err);
+  }
 }
 
 async function writeNow(): Promise<void> {
@@ -48,7 +49,17 @@ async function writeNow(): Promise<void> {
     const tmp = PLAYERS_FILE + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify(obj), 'utf-8');
     await fsp.rename(tmp, PLAYERS_FILE);
-  } catch { /* ignore */ }
+  } catch (err) {
+    snapshotFailures += 1;
+    if (snapshotFailures === 1 || snapshotFailures % 20 === 0) {
+      console.error(`[profileStore] Snapshot write failed (${snapshotFailures} consecutive).`, err);
+    }
+    return;
+  }
+  if (snapshotFailures > 0) {
+    console.warn(`[profileStore] Snapshot recovered after ${snapshotFailures} failed attempt(s).`);
+    snapshotFailures = 0;
+  }
 }
 
 function scheduleWrite(): void {
@@ -58,11 +69,12 @@ function scheduleWrite(): void {
     writeTimer = null;
     writingPromise = writeNow().finally(() => { writingPromise = null; });
   }, DEBOUNCE_MS);
+  writeTimer.unref?.();
 }
 
 export async function flushPlayersToFile(): Promise<void> {
   if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
-  if (writingPromise) { try { await writingPromise; } catch { /* ignore */ } }
+  if (writingPromise) { try { await writingPromise; } catch { /* writeNow already logged it */ } }
   if (dirty) await writeNow();
 }
 
@@ -74,18 +86,23 @@ function computeUnlocks(points: number): number[] {
   return unlocked;
 }
 
+/**
+ * Read a profile, materialising a default for an unknown player.
+ *
+ * Deliberately does NOT insert: this is reachable unauthenticated as
+ * `GET /api/players/:playerId/profile`, and inserting on read let anyone grow
+ * the map without bound by requesting random ids. A profile is created only by
+ * a write path (`addRewardPoints` / `setRewardPoints`).
+ */
 export function getProfile(playerId: string): PlayerProfile {
-  let p = profiles.get(playerId);
-  if (!p) {
-    p = {
-      playerId,
-      rewardPoints: 0,
-      unlockedAdvantages: [],
-      updatedAt: new Date().toISOString(),
-    };
-    profiles.set(playerId, p);
-  }
-  return p;
+  const existing = profiles.get(playerId);
+  if (existing) return existing;
+  return {
+    playerId,
+    rewardPoints: 0,
+    unlockedAdvantages: [],
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function addRewardPoints(playerId: string, delta: number): PlayerProfile {
@@ -114,13 +131,3 @@ export function setRewardPoints(playerId: string, points: number): PlayerProfile
   return next;
 }
 
-let shuttingDown = false;
-async function gracefulShutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  try { await flushPlayersToFile(); } finally { /* gameStore handles process.exit */ }
-}
-if (!isTest) {
-  process.once('SIGTERM', gracefulShutdown);
-  process.once('SIGINT', gracefulShutdown);
-}
